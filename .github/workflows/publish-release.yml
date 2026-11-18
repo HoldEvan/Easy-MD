@@ -1,0 +1,51 @@
+name: Publish verified release
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify source run and tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/${{ github.repository }}/actions/runs/44295102873 > run.json
+          jq -e '.conclusion == "success" and .head_sha == "3a40d2c94569dea41e5e231d0ed6f8ccbf9d70a4"' run.json
+          tag=$(gh api repos/${{ github.repository }}/git/ref/tags/v0.4.6 --jq '.object.sha')
+          commit=$(gh api repos/${{ github.repository }}/git/tags/$tag --jq '.object.sha')
+          test "$commit" = 3a40d2c94569dea41e5e231d0ed6f8ccbf9d70a4
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 44295102873
+          path: artifacts
+          merge-multiple: true
+      - name: Publish installers and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd artifacts
+          test -f EasyMD_0.4.6_x64-setup.exe
+          test -f EasyMD_0.4.6_aarch64.dmg
+          sha256sum *.exe *.dmg > SHA256SUMS.txt
+          cat > notes.md <<'EOF'
+          ## EasyMD 0.4.6
+
+          - macOS 原生标题栏、快捷键及 Finder 打开适配。
+          - 本地分享、密码登录、二维码、移动端布局与 NGINX 静态包导出。
+          - 图片悬浮预览及本地/S3/PicGo 上传；AI 模型列表获取。
+          - 图谱搜索、局部关系图、链接解析及空白图谱修复。
+          - Mermaid、任务列表、代码复制反馈、分享双链及日历布局改进。
+          - 修复 Windows 分享服务停止缓慢的问题。
+
+          Windows x64 使用 exe 安装程序；macOS Apple Silicon（M 系列）使用 aarch64.dmg。
+          两平台构建及 Rust 测试通过，安装包对应提交 3a40d2c。
+          macOS 使用 ad-hoc 签名，未做 Developer ID 公证；Windows 未配置商业代码签名。
+          EOF
+          gh release create v0.4.6 *.exe *.dmg SHA256SUMS.txt --repo ${{ github.repository }} --verify-tag --title 'EasyMD 0.4.6' --notes-file notes.md --draft
+          gh release edit v0.4.6 --repo ${{ github.repository }} --draft=false --latest
