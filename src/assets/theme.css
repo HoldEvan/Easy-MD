@@ -28,6 +28,8 @@
   /* 尺寸 */
   --ribbon-width: 64px;
   --titlebar-height: 40px;
+  /* macOS 红黄绿按钮占位宽度（原生按钮浮在网页上方，标题栏左侧需让开） */
+  --traffic-light-inset: 78px;
   --statusbar-height: 24px;
   --input-height: 30px;
   --list-item-height: 26px;

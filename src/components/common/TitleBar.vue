@@ -1,6 +1,6 @@
 <template>
-  <div class="titlebar">
-    <div class="titlebar-left">
+  <div class="titlebar" :class="{ 'is-mac': isMac }">
+    <div class="titlebar-left" data-tauri-drag-region>
       <span class="titlebar-name">EasyMD</span>
       <button
         v-if="vaultName"
@@ -10,7 +10,8 @@
         @pointerdown.stop
         @click="vaultMenuOpen = !vaultMenuOpen"
       >
-        <span class="titlebar-vault-prefix">{{ t("vs.prefix") }}</span>{{ vaultName }}
+        <span class="titlebar-vault-prefix">{{ t("vs.prefix") }}</span>
+        <span class="titlebar-vault-name">{{ vaultName }}</span>
         <Icon name="chevron-down" :size="10" class="titlebar-vault-caret" />
       </button>
     </div>
@@ -45,33 +46,24 @@
       <div class="ts-box" :title="t('tb.searchTitle')" @pointerdown.stop @click="openSearch">
         <Icon name="search" :size="13" />
         <span class="ts-hint">{{ t("tb.searchHint") }}</span>
-        <span class="ts-kbd">Ctrl+Shift+F</span>
+        <span class="ts-kbd">{{ keyMod }}+Shift+F</span>
       </div>
     </div>
 
     <div class="titlebar-drag" data-tauri-drag-region />
-    <div class="titlebar-controls">
-      <button class="tb-btn" :title="t('tb.min')" @click="minimize">
-        <Icon name="minus" :size="14" />
-      </button>
-      <button class="tb-btn" :title="t('tb.max')" @click="toggleMax">
-        <Icon name="square" :size="12" />
-      </button>
-      <button class="tb-btn tb-close" :title="t('c.close')" @click="closeWin">
-        <Icon name="x" :size="14" />
-      </button>
-    </div>
+    <WindowControls />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import Icon from "./Icon.vue";
+import WindowControls from "./WindowControls.vue";
 import DropdownMenu from "./DropdownMenu.vue";
 import { useVaultStore } from "../../stores/vault";
 import { useUiStore } from "../../stores/ui";
 import { t } from "../../i18n";
+import { isMac, keyMod } from "../../lib/platform";
 import type { VaultEntry } from "../../types";
 
 const vault = useVaultStore();
@@ -105,15 +97,11 @@ async function switchVault(path: string) {
 function openSearch() {
   ui.openSearch("content");
 }
-
-const win = getCurrentWindow();
-const minimize = () => win.minimize();
-const toggleMax = () => win.toggleMaximize();
-const closeWin = () => win.close();
 </script>
 
 <style scoped>
 .titlebar {
+  position: relative;
   height: var(--titlebar-height);
   display: flex;
   align-items: stretch;
@@ -130,6 +118,10 @@ const closeWin = () => win.close();
   color: var(--text-muted);
   font-size: var(--font-ui-size);
   flex-shrink: 0;
+}
+/* macOS：原生红黄绿按钮浮在网页之上，左侧内容让开这段宽度，双击空白处仍可缩放窗口 */
+.titlebar.is-mac .titlebar-left {
+  padding-left: var(--traffic-light-inset);
 }
 .titlebar-name {
   color: var(--text-normal);
@@ -161,6 +153,12 @@ const closeWin = () => win.close();
 .titlebar-vault-caret {
   opacity: 0.6;
 }
+.titlebar-vault-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
 .tb-vault-item {
   display: flex;
   align-items: center;
@@ -190,6 +188,23 @@ const closeWin = () => win.close();
   align-items: center;
   justify-content: center;
   padding: 4px 12px;
+}
+/* macOS：搜索框按窗口绝对居中（不因左侧让开红黄绿而右移），
+   左侧内容因此需要自己收敛宽度，避免压到居中的搜索框 */
+.titlebar.is-mac .titlebar-left {
+  min-width: 0;
+  max-width: calc(50% - 200px);
+  overflow: hidden;
+}
+.titlebar.is-mac .titlebar-search {
+  padding: 0;
+}
+.titlebar.is-mac .ts-box {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(360px, 40vw);
 }
 .ts-box {
   width: min(360px, 100%);
@@ -224,24 +239,5 @@ const closeWin = () => win.close();
 }
 .titlebar-drag {
   flex: 0 1 40px;
-}
-.titlebar-controls {
-  display: flex;
-}
-.tb-btn {
-  width: 46px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-  transition: background var(--anim-fast);
-}
-.tb-btn:hover {
-  background: var(--background-modifier-hover);
-  color: var(--text-normal);
-}
-.tb-close:hover {
-  background: #e81123;
-  color: #fff;
 }
 </style>

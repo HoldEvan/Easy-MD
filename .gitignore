@@ -2,6 +2,10 @@ node_modules
 dist
 src-tauri/target
 src-tauri/gen/schemas
+.cargo-home
+.cargo-target
+.npm-cache
+release
 .zcode
 *.local
 .DS_Store

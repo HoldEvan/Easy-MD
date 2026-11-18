@@ -23,23 +23,33 @@ import {
   Decoration,
   type DecorationSet,
   ViewPlugin,
+  hoverTooltip,
   keymap,
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { autocompletion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
-import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
+import { syntaxHighlighting, defaultHighlightStyle, syntaxTree } from "@codemirror/language";
 import { useEditorStore } from "../../stores/editor";
 import { useNotesIndexStore } from "../../stores/notesIndex";
 import { useAiStore } from "../../stores/ai";
 import { t, tf } from "../../i18n";
 import { clamp01, isScrollSyncLocked, lockScrollSync } from "../../lib/scrollSync";
+import { api } from "../../ipc/tauri";
+import {
+  emdExternalUrl,
+  emdAssetUrl,
+  fileUrlToPath,
+  resolveImageSrc,
+} from "../../lib/markdown/renderer";
+import { useSettingsStore } from "../../stores/settings";
 
 const host = ref<HTMLElement>();
 const wrapEl = ref<HTMLElement>();
 const editor = useEditorStore();
 const indexStore = useNotesIndexStore();
 const aiStore = useAiStore();
+const settings = useSettingsStore();
 let view: EditorView | null = null;
 let syncing = false; // 区分"编辑器输入"与"外部写入"
 
@@ -71,6 +81,119 @@ function askAi() {
   aiBtn.visible = false;
   aiStore.openWith(aiBtn.text);
 }
+
+// ---------- Markdown 图片悬浮预览 ----------
+const externalImageCache = new Map<string, string>();
+
+function imageAt(view: EditorView, pos: number) {
+  const matches: { from: number; to: number; src: string }[] = [];
+  syntaxTree(view.state).iterate({
+    from: Math.max(0, pos - 1),
+    to: Math.min(view.state.doc.length, pos + 1),
+    enter(node) {
+      if (node.name !== "Image" || pos < node.from || pos > node.to) return;
+      let src = "";
+      for (let child = node.node.firstChild; child; child = child.nextSibling) {
+        if (child.name === "URL") {
+          src = view.state.doc.sliceString(child.from, child.to);
+          break;
+        }
+      }
+      if (src) matches.push({ from: node.from, to: node.to, src });
+    },
+  });
+  return matches[0] ?? null;
+}
+
+function makeImageTooltip(view: EditorView, pos: number) {
+  const image = imageAt(view, pos);
+  if (!image) return null;
+  const src = image.src.replace(/^<|>$/g, "").replace(/\\([() ])/g, "$1");
+  return {
+    pos: image.from,
+    end: image.to,
+    above: true,
+    create: () => createImagePreview(src),
+  };
+}
+
+function createImagePreview(src: string) {
+  const tooltip = document.createElement("div");
+  tooltip.className = "cm-image-preview";
+  tooltip.textContent = t("se.imageLoading");
+  const img = document.createElement("img");
+  img.alt = "";
+  img.hidden = true;
+  tooltip.append(img);
+
+  let objectUrl = "";
+  let disposed = false;
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    img.onload = null;
+    img.onerror = null;
+    img.removeAttribute("src");
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  };
+  const setError = () => {
+    if (!disposed) tooltip.textContent = t("se.imagePreviewFail");
+  };
+  const setSource = (url: string) => {
+    if (disposed) return;
+    img.onload = () => {
+      if (disposed) return;
+      img.hidden = false;
+      tooltip.classList.add("is-loaded");
+      tooltip.firstChild?.remove();
+    };
+    img.onerror = setError;
+    img.src = url;
+  };
+
+  void (async () => {
+    try {
+      if (/^(https?:)?\/\//i.test(src)) {
+        const url = src.startsWith("//") ? `https:${src}` : src;
+        setSource(externalImageCache.get(url) || url);
+        img.onerror = async () => {
+          try {
+            const cached = externalImageCache.get(url) || emdExternalUrl(await api.fetchExternalImage(url));
+            externalImageCache.set(url, cached);
+            setSource(cached);
+          } catch {
+            setError();
+          }
+        };
+        return;
+      }
+      if (/^(file:|[a-z]:[\\/]|\\\\)/i.test(src)) {
+        const path = /^file:/i.test(src) ? fileUrlToPath(src) : src;
+        const bytes = await api.readExternalBinary(path);
+        if (disposed) return;
+        objectUrl = URL.createObjectURL(new Blob([new Uint8Array(bytes)]));
+        setSource(objectUrl);
+        return;
+      }
+      const opts = {
+        sourcePath: editor.activePath,
+        attachmentsDir: settings.data.attachments_dir,
+        assetPaths: indexStore.assets,
+        resolveNote: () => null,
+      };
+      setSource(emdAssetUrl(resolveImageSrc(src, opts)));
+    } catch {
+      setError();
+    }
+  })();
+
+  return { dom: tooltip, destroy: dispose };
+}
+
+const imagePreviewTooltip = hoverTooltip(makeImageTooltip, {
+  hoverTime: 450,
+  hideOnChange: true,
+});
 
 // ---------- 格式动作（由头部工具栏通过事件触发） ----------
 function runAction(key: string) {
@@ -386,6 +509,7 @@ function makeState(): EditorState {
       markdown(),
       syntaxHighlighting(defaultHighlightStyle),
       markPlugin,
+      imagePreviewTooltip,
       autocompletion({
         override: [
           (ctx: CompletionContext): CompletionResult | null =>
@@ -593,5 +717,31 @@ watch(
 .cm-host .cm-tooltip-autocomplete > ul {
   font-family: var(--font-ui);
   max-height: 240px;
+}
+.cm-image-preview {
+  display: grid;
+  place-items: center;
+  min-width: 160px;
+  min-height: 48px;
+  max-width: min(480px, 60vw);
+  max-height: min(360px, 55vh);
+  overflow: hidden;
+  padding: 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-l2);
+  font: 12px var(--font-ui);
+}
+.cm-image-preview.is-loaded {
+  min-width: 0;
+  min-height: 0;
+}
+.cm-image-preview img {
+  display: block;
+  max-width: min(460px, 58vw);
+  max-height: min(340px, 52vh);
+  object-fit: contain;
 }
 </style>

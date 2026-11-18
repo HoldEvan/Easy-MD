@@ -1,5 +1,6 @@
 // 轻量双语 i18n：单文件字典 key: [中文, English]，零依赖，切换立即生效
 import { ref } from "vue";
+import { platformText } from "../lib/platform";
 
 export type Lang = "zh" | "en";
 
@@ -146,6 +147,8 @@ const dict: Record<string, [string, string]> = {
   "ed.src": ["源码", "Source"],
   "ed.split": ["分屏", "Split"],
   "ed.read": ["阅读", "Read"],
+  "se.imageLoading": ["正在加载图片预览…", "Loading image preview…"],
+  "se.imagePreviewFail": ["图片预览加载失败", "Image preview failed to load"],
   "ed.moreFmt": ["更多格式", "More formats"],
   "ed.moreTxt": ["更多", "More"],
   "ed.tpl": ["套用模板（插入到光标处）", "Apply template (insert at cursor)"],
@@ -322,6 +325,11 @@ const dict: Record<string, [string, string]> = {
   "st.ctxTip": [
     "注册后右键任意 .md / .canvas 文件即可“用 EasyMD 打开”；安装包已自动注册，便携版可在此手动注册（仅当前用户，无需管理员）。",
     "Right-click any .md / .canvas file to \"Open with EasyMD\". The installer registers it automatically; portable builds can register here (per-user, no admin).",
+  ],
+  "st.assoc": ["文件关联", "File associations"],
+  "st.assocTip": [
+    "应用已声明支持 .md / .markdown / .canvas：在访达中右键文件 → 打开方式 → 其他… 选择 EasyMD，可勾选“始终以此方式打开”。",
+    "EasyMD declares support for .md / .markdown / .canvas. In Finder, right-click a file → Open With → Other… and pick EasyMD; you can check \"Always Open With\".",
   ],
   "st.attach": ["附件目录（粘贴图片存放）", "Attachments folder (pasted images)"],
   "st.tplDir": ["模板文件夹", "Templates folder"],
@@ -561,7 +569,9 @@ export const locale = ref<Lang>("zh");
 export function t(key: string): string {
   const entry = dict[key];
   if (!entry) return key;
-  return locale.value === "en" ? entry[1] : entry[0];
+  const s = locale.value === "en" ? entry[1] : entry[0];
+  // 按平台改写文案：Ctrl → ⌘、回收站 → 废纸篓 等（实际按键判定同时接受 ctrlKey/metaKey）
+  return platformText(s);
 }
 
 /** 带插值的文案：tf("tp.notes", { n: 3 }) */

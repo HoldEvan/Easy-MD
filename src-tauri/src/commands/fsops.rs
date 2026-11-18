@@ -359,14 +359,15 @@ pub struct FileWithTime {
 pub fn list_all_files_with_mtime(state: State<'_, AppState>) -> Result<Vec<FileWithTime>, String> {
     with_vault(&state, |vc| {
         let mut out = Vec::new();
+        let skip_dot = |e: &walkdir::DirEntry| {
+            e.depth() == 0
+                || (!e.file_name().to_string_lossy().starts_with('.')
+                    && e.file_name() != "node_modules"
+                    && e.file_name().to_string_lossy() != "Thumbs.db")
+        };
         for entry in walkdir::WalkDir::new(&vc.root)
             .into_iter()
-            .filter_entry(|e| {
-                e.depth() == 0
-                    || (!e.file_name().to_string_lossy().starts_with('.')
-                        && e.file_name() != "node_modules"
-                        && e.file_name().to_string_lossy() != "Thumbs.db")
-            })
+            .filter_entry(skip_dot)
         {
             let Ok(e) = entry else { continue };
             if !e.file_type().is_file() {
@@ -392,6 +393,49 @@ pub fn list_all_files_with_mtime(state: State<'_, AppState>) -> Result<Vec<FileW
                 .unwrap_or(0);
             out.push(FileWithTime { path: rel, mtime, kind });
         }
+
+        // 临时文件模式：库根是 config_dir/temp，原目录里的图片不在库内。
+        // 这里把原目录的**图片**也列进来（相对原目录的路径），让预览能解析到它们。
+        // 只要图片：原目录的 md 不属于这个临时库，混进来会污染文件树与日历。
+        if let Some(asset_root) = vc.asset_root.as_deref() {
+            let have: std::collections::HashSet<String> =
+                out.iter().map(|f| f.path.to_lowercase()).collect();
+            for entry in walkdir::WalkDir::new(asset_root)
+                .into_iter()
+                .filter_entry(skip_dot)
+            {
+                let Ok(e) = entry else { continue };
+                if !e.file_type().is_file() {
+                    continue;
+                }
+                let name = e.file_name().to_string_lossy().to_string();
+                if entry_kind(&name) != "image" {
+                    continue;
+                }
+                let rel = e
+                    .path()
+                    .strip_prefix(asset_root)
+                    .unwrap_or(e.path())
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                if have.contains(&rel.to_lowercase()) {
+                    continue; // 库内已有同名资源，以库内为准
+                }
+                let mtime = e
+                    .metadata()
+                    .ok()
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                out.push(FileWithTime {
+                    path: rel,
+                    mtime,
+                    kind: "image".to_string(),
+                });
+            }
+        }
+
         out.sort_by(|a, b| b.mtime.cmp(&a.mtime));
         Ok(out)
     })

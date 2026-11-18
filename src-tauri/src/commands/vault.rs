@@ -83,6 +83,7 @@ pub(crate) fn open_vault_inner(
             engine,
             cache_path,
             watcher: Some(watch),
+            asset_root: None,
         });
     }
 

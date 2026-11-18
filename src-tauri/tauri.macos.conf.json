@@ -1,0 +1,52 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "title": "EasyMD",
+        "label": "main",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 600,
+        "center": true,
+        "resizable": true,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 9, "y": 22 },
+        "acceptFirstMouse": true
+      }
+    ]
+  },
+  "bundle": {
+    "targets": ["app", "dmg"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png",
+      "icons/icon.icns"
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown"],
+        "name": "Markdown",
+        "contentTypes": ["net.daringfireball.markdown", "public.plain-text"],
+        "mimeType": "text/markdown",
+        "role": "Editor",
+        "rank": "Owner"
+      },
+      {
+        "ext": ["canvas"],
+        "name": "EasyMD Canvas",
+        "exportedType": {
+          "identifier": "com.easymd.canvas",
+          "conformsTo": ["public.json"]
+        },
+        "role": "Editor",
+        "rank": "Owner"
+      }
+    ]
+  }
+}

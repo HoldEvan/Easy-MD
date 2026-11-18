@@ -11,28 +11,33 @@ use std::path::{Component, Path, PathBuf};
 use tauri::Manager;
 
 pub fn run() {
-    tauri::Builder::default()
-        // 单实例：已运行时右键/双击打开文件 → 聚焦窗口并转发路径（必须最先注册）
-        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            use tauri::Emitter;
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.unminimize();
-                let _ = w.set_focus();
-            }
-            if let Some(file) = args.iter().skip(1).rev().find(|a| {
-                let l = a.to_lowercase();
-                l.ends_with(".md") || l.ends_with(".markdown") || l.ends_with(".canvas")
-            }) {
-                let _ = app.emit("os-open-file", file.clone());
-            }
-        }))
+    let builder = tauri::Builder::default();
+    // macOS 文档打开由 AppKit 的 Opened 事件交付，不一定出现在 argv。
+    // single-instance 插件会在第二个进程进入 Tauri run loop 前转发 argv 并退出，
+    // 从而吞掉 AppleEvent；macOS 交由 LaunchServices/Tauri 原生复用进程处理。
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+        use tauri::Emitter;
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.unminimize();
+            let _ = w.set_focus();
+        }
+        if let Some(file) = args.iter().skip(1).rev().find(|a| {
+            let l = a.to_lowercase();
+            l.ends_with(".md") || l.ends_with(".markdown") || l.ends_with(".canvas")
+        }) {
+            let _ = app.emit("os-open-file", file.clone());
+        }
+    }));
+    builder
         .plugin(tauri_plugin_dialog::init())
         .manage(state::AppState::default())
         .register_uri_scheme_protocol("emdasset", |ctx, request| {
             serve_asset(ctx.app_handle(), &request.uri().to_string())
         })
         .setup(|app| {
-            // 捕获启动参数中的文件路径（右键"用 EasyMD 打开"）
+            // 冷启动文件关联可能通过 argv 交付（所有桌面平台），先排队给前端读取；
+            // macOS 已运行时的文档打开另由 RunEvent::Opened 处理。
             let st = app.state::<state::AppState>();
             if let Some(file) = std::env::args().skip(1).rev().find(|a| {
                 let l = a.to_lowercase();
@@ -94,8 +99,46 @@ pub fn run() {
             commands::fsops::delete_files,
             commands::ai::ai_chat,
         ])
-        .run(tauri::generate_context!())
-        .expect("EasyMD 启动失败");
+        .build(tauri::generate_context!())
+        .expect("EasyMD 启动失败")
+        .run(|app, event| {
+            // macOS：访达「用 EasyMD 打开」不经过命令行参数，而是投递 RunEvent::Opened。
+            // 前端挂载完成前收到的路径写进 pending_file（由 get_pending_file 取走）；
+            // 前端就绪后直接 emit，交给 onOsOpenFile 处理。
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = &event {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.unminimize();
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+                let st = app.state::<state::AppState>();
+                let ready = st
+                    .frontend_ready
+                    .load(std::sync::atomic::Ordering::Acquire);
+                for url in urls {
+                    let Ok(path) = url.to_file_path() else { continue };
+                    let path = path.to_string_lossy().to_string();
+                    if !is_openable(&path) {
+                        continue;
+                    }
+                    if ready {
+                        use tauri::Emitter;
+                        let _ = app.emit("os-open-file", path);
+                    } else if let Ok(mut pf) = st.pending_file.lock() {
+                        *pf = Some(path);
+                    }
+                }
+            }
+            let _ = (&app, &event);
+        });
+}
+
+/// 只接受 EasyMD 能打开的后缀（仅 macOS 的 RunEvent::Opened 通路使用）
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn is_openable(path: &str) -> bool {
+    let l = path.to_lowercase();
+    l.ends_with(".md") || l.ends_with(".markdown") || l.ends_with(".canvas")
 }
 
 fn serve_asset(app: &tauri::AppHandle, uri: &str) -> tauri::http::Response<Vec<u8>> {
@@ -202,11 +245,48 @@ fn serve_asset(app: &tauri::AppHandle, uri: &str) -> tauri::http::Response<Vec<u
             bytes = std::fs::read(vc.root.join(rel2.replace('\\', "/"))).ok();
         }
     }
+
+    // 临时文件模式：库根是 config_dir/temp，被打开的 md 却来自别的目录，
+    // 它引用的相对图片留在原目录。库内落空时以只读方式回退到原目录取。
+    // 只读原目录、且拒绝越界，绝不写回。
+    let mut served_ext: Option<String> = None;
+    if bytes.is_none() {
+        if let Some(asset_root) = vc.asset_root.as_deref() {
+            let cand = asset_root.join(rel_path);
+            let root_l = asset_root.to_string_lossy().to_lowercase();
+            let ext = cand
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            let is_image = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif"]
+                .contains(&ext.as_str());
+            let canonical_root = asset_root.canonicalize().ok();
+            let canonical_cand = cand.canonicalize().ok();
+            let contained = canonical_root
+                .as_ref()
+                .zip(canonical_cand.as_ref())
+                .is_some_and(|(root, file)| file.starts_with(root));
+            if is_image && contained && cand.to_string_lossy().to_lowercase().starts_with(&root_l) {
+                if let Ok(b) = std::fs::read(&cand) {
+                    served_ext = Some(ext);
+                    bytes = Some(b);
+                }
+            }
+        }
+    }
+
     let bytes = match bytes {
         Some(b) => b,
         None => return not_found(),
     };
-    let mime = mime_of(full.extension().and_then(|e| e.to_str()).unwrap_or(""));
+    let ext = served_ext.unwrap_or_else(|| {
+        full.extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_string()
+    });
+    let mime = mime_of(&ext);
     Response::builder()
         .header("Content-Type", mime)
         .header("Cache-Control", "max-age=300")

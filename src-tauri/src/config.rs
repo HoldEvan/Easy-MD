@@ -123,12 +123,21 @@ pub struct VaultEntry {
 
 // ---------------- 读写 ----------------
 
-/// Windows 路径归一化：统一反斜杠并去掉末尾分隔符。
+/// 路径归一化：统一分隔符并去掉末尾分隔符。
 /// 同一文件夹用 `/` 与 `\` 两种写法时，库列表/索引缓存/last_vault 会各存一份，
 /// 表现为“文件树串库”，故所有路径入口都要过这里。
+/// Windows 统一为反斜杠；macOS/Linux 统一为正斜杠（POSIX 只认 `/`）。
 pub fn normalize_path(p: &str) -> String {
-    let n = p.replace('/', "\\");
-    n.trim_end_matches('\\').to_string()
+    #[cfg(windows)]
+    {
+        let n = p.replace('/', "\\");
+        n.trim_end_matches('\\').to_string()
+    }
+    #[cfg(not(windows))]
+    {
+        let n = p.replace('\\', "/");
+        n.trim_end_matches('/').to_string()
+    }
 }
 
 pub fn config_dir(app: &AppHandle) -> PathBuf {

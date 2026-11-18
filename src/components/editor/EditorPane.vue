@@ -215,6 +215,7 @@ import { addTagToContent } from "../../lib/tags";
 import { applyTemplateVars, listTemplates } from "../../lib/template";
 import { useAiStore } from "../../stores/ai";
 import { t, tf } from "../../i18n";
+import { keyHint } from "../../lib/platform";
 
 const editor = useEditorStore();
 const ui = useUiStore();
@@ -352,8 +353,8 @@ const formatBar = computed(() => [
   { key: "h2", text: "H2", title: t("ed.fH2") },
   { key: "h3", text: "H3", title: t("ed.fH3") },
   { key: "d:1", text: "", title: "" },
-  { key: "bold", text: t("ed.fBold"), title: "Ctrl+B" },
-  { key: "italic", text: t("ed.fItalic"), title: "Ctrl+I" },
+  { key: "bold", text: t("ed.fBold"), title: keyHint("Ctrl+B") },
+  { key: "italic", text: t("ed.fItalic"), title: keyHint("Ctrl+I") },
   { key: "mark", text: t("ed.fMark"), title: "==" },
   { key: "icode", text: t("ed.fCode"), title: "`" },
   { key: "strike", text: t("ed.fStrike"), title: "~~" },
@@ -387,8 +388,8 @@ const menuItems = computed<DropItem[]>(() => [
   { key: "html", label: t("ed.expHtml"), icon: "download", hint: t("ed.singleFile") },
   { key: "pdf", label: t("ed.expPdf"), icon: "download", hint: t("ed.printHint") },
   { key: "sep-view", label: "", separator: true },
-  { key: "graph", label: t("ed.openGraph"), icon: "share-2", hint: "Ctrl+G" },
-  { key: "search", label: t("ed.searchAll"), icon: "search", hint: "Ctrl+Shift+F" },
+  { key: "graph", label: t("ed.openGraph"), icon: "share-2", hint: keyHint("Ctrl+G") },
+  { key: "search", label: t("ed.searchAll"), icon: "search", hint: keyHint("Ctrl+Shift+F") },
 ]);
 
 async function onMenuSelect(key: string) {

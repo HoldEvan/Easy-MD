@@ -11,9 +11,14 @@ pub struct OpenNoteResult {
     pub rel: String,
 }
 
-/// 取出启动时传入的待打开文件（读取后清空）
+/// 取出启动时传入的待打开文件（读取后清空），并把前端标记为已就绪。
+/// 前端在 onMounted 里先注册 os-open-file 监听、再调本命令，因此这里的置位
+/// 之后到来的 RunEvent::Opened 一定会走 emit 通路，不会丢事件。
 #[tauri::command]
 pub fn get_pending_file(state: State<'_, AppState>) -> Option<String> {
+    state
+        .frontend_ready
+        .store(true, std::sync::atomic::Ordering::Release);
     let mut pf = state.pending_file.lock().ok()?;
     pf.take()
 }
@@ -71,6 +76,7 @@ pub fn open_path_from_os(
     // 归一化为 Windows 反斜杠形式：与 VaultPicker 存的路径一致，
     // 避免 touch_vault / last_vault / 缓存路径 因分隔符差异产生重复记录。
     // rel 保持正斜杠（前端索引/文件树使用正斜杠相对路径）。
+    #[cfg(windows)]
     let root_str = root_str.replace('/', "\\");
 
     let res = super::vault::open_vault_inner(
@@ -88,6 +94,7 @@ pub fn open_path_from_os(
 
 // ---- Windows 右键菜单注册（绿色版也可用，写 HKCU 无需管理员） ----
 
+#[cfg(windows)]
 fn write_context_reg(exe: &str) -> Result<(), String> {
     use winreg::enums::*;
     use winreg::RegKey;
@@ -135,6 +142,7 @@ fn write_context_reg(exe: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(windows)]
 fn remove_context_reg() -> Result<(), String> {
     use winreg::enums::*;
     use winreg::RegKey;
@@ -173,7 +181,10 @@ pub fn open_as_temp(
     let dst = temp_dir.join(&name);
     std::fs::copy(&src, &dst).map_err(|e| format!("拷贝失败：{}", e))?;
 
-    // 以临时目录为 vault 打开
+    // 以临时目录为 vault 打开。md 被拷进 temp，但它引用的相对图片仍在原目录，
+    // 所以把原文件所在目录记为只读资源根：资源列表与 serve_asset 在库内落空时回退到它，
+    // 否则 `![](pic.png)` 解析出的 emdasset 请求会一律 404。
+    let asset_root = src.parent().map(|p| p.to_path_buf());
     let root_str = temp_dir.to_string_lossy().to_string();
     let res = super::vault::open_vault_inner(
         app,
@@ -181,6 +192,12 @@ pub fn open_as_temp(
         std::path::PathBuf::from(temp_dir),
         root_str,
     )?;
+    {
+        let mut guard = state.vault.lock().map_err(|e| e.to_string())?;
+        if let Some(vc) = guard.as_mut() {
+            vc.asset_root = asset_root.filter(|p| p.is_dir());
+        }
+    }
     Ok(OpenNoteResult {
         root: res.root,
         notes: res.notes,
@@ -189,26 +206,50 @@ pub fn open_as_temp(
 }
 
 
-/// 打开 Windows 设置 → 默认应用（让用户设 EasyMD 为 .md 默认打开方式）
+/// 打开系统设置 → 默认应用（让用户设 EasyMD 为 .md 默认打开方式）
+/// Windows 走 ms-settings:defaultapps；macOS 无对应 URI，直接提示用户在「打开方式」里设置。
 #[tauri::command]
 pub fn open_default_apps_settings() -> Result<(), String> {
-    std::process::Command::new("cmd")
-        .args(["/C", "start", "ms-settings:defaultapps"])
-        .spawn()
-        .map_err(|e| format!("Open settings failed: {}", e))?;
-    Ok(())
+    #[cfg(windows)]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "ms-settings:defaultapps"])
+            .spawn()
+            .map_err(|e| format!("Open settings failed: {}", e))?;
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        // macOS：文件关联由 LaunchServices 管理，交给系统「显示简介 → 打开方式」，
+        // 这里不弹系统窗口，只返回明确提示，避免静默失败。
+        Err("macOS 请在访达中右键 .md 文件 → 显示简介 → 打开方式，选择 EasyMD 后点「全部更改」".into())
+    }
 }
 
 /// 注册右键菜单（使用当前运行的 exe 路径）
 #[tauri::command]
 pub fn register_context_menu() -> Result<(), String> {
-    let exe = std::env::current_exe().map_err(|e| format!("获取程序路径失败：{}", e))?;
-    let exe = exe.to_string_lossy().to_string();
-    write_context_reg(&exe)
+    #[cfg(windows)]
+    {
+        let exe = std::env::current_exe().map_err(|e| format!("获取程序路径失败：{}", e))?;
+        let exe = exe.to_string_lossy().to_string();
+        write_context_reg(&exe)
+    }
+    #[cfg(not(windows))]
+    {
+        Err("右键菜单注册仅支持 Windows；macOS 的文件关联由系统 LaunchServices 管理".into())
+    }
 }
 
 /// 取消注册
 #[tauri::command]
 pub fn unregister_context_menu() -> Result<(), String> {
-    remove_context_reg()
+    #[cfg(windows)]
+    {
+        remove_context_reg()
+    }
+    #[cfg(not(windows))]
+    {
+        Err("右键菜单注册仅支持 Windows".into())
+    }
 }

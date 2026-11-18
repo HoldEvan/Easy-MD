@@ -94,21 +94,31 @@
               <option value="temp">{{ t("st.osTemp") }}</option>
             </select>
           </div>
-          <div class="st-row st-actions-row">
-            <label>{{ t("st.ctx") }}</label>
-            <button class="emd-btn" @click="regMenu(true)">
-              <Icon name="check" :size="13" /> {{ t('st.ctxReg') }}
-            </button>
-            <button class="emd-btn" @click="regMenu(false)">
-              <Icon name="x" :size="13" /> {{ t("st.ctxUnreg") }}
-            </button>
-          </div>
-          <p class="st-tip">
-            {{ t("st.ctxTip") }}</p>
+          <!-- Windows 专用：注册表右键菜单。macOS 的文件关联由打包期 Info.plist 声明，注册表概念不存在 -->
+          <template v-if="isWindows">
+            <div class="st-row st-actions-row">
+              <label>{{ t("st.ctx") }}</label>
+              <button class="emd-btn" @click="regMenu(true)">
+                <Icon name="check" :size="13" /> {{ t('st.ctxReg') }}
+              </button>
+              <button class="emd-btn" @click="regMenu(false)">
+                <Icon name="x" :size="13" /> {{ t("st.ctxUnreg") }}
+              </button>
+            </div>
+            <p class="st-tip">{{ t("st.ctxTip") }}</p>
+          </template>
+          <!-- macOS 等：文件关联已写进 Info.plist，无需运行时注册，只说明设置方式 -->
+          <template v-else>
+            <div class="st-row">
+              <label>{{ t("st.assoc") }}</label>
+              <span class="st-tip st-tip-inline">.md / .markdown / .canvas</span>
+            </div>
+            <p class="st-tip">{{ t("st.assocTip") }}</p>
+          </template>
         </div>
 
         <!-- 外观（CSS 片段） -->
-        <div v-if="tab === 'appearance'" key="appearance" class="st-pane">
+        <div v-else-if="tab === 'appearance'" key="appearance" class="st-pane">
           <p class="st-tip">
             {{ t("st.snippetDir") }}<code>{{ settings.snippetsDir }}</code
             >{{ t("st.snippetTip2") }}
@@ -134,22 +144,22 @@
         </div>
 
         <!-- 模板管理 -->
-        <div v-if="tab === 'templates'" key="templates" class="st-pane">
+        <div v-else-if="tab === 'templates'" key="templates" class="st-pane">
           <TemplatePane />
         </div>
 
         <!-- AI -->
-        <div v-if="tab === 'ai'" key="ai" class="st-pane">
+        <div v-else-if="tab === 'ai'" key="ai" class="st-pane">
           <AiPane />
         </div>
 
         <!-- MCP 同步 -->
-        <div v-if="tab === 'mcp'" key="mcp" class="st-pane">
+        <div v-else-if="tab === 'mcp'" key="mcp" class="st-pane">
           <McpSettings />
         </div>
 
         <!-- 关于 -->
-        <div v-if="tab === 'about'" key="about" class="st-pane">
+        <div v-else-if="tab === 'about'" key="about" class="st-pane">
           <AboutPane />
         </div>
         </transition>
@@ -171,6 +181,7 @@ import { useSettingsStore } from "../../stores/settings";
 import { useNotesIndexStore } from "../../stores/notesIndex";
 import { api } from "../../ipc/tauri";
 import { listTemplates, type TemplateFile } from "../../lib/template";
+import { isWindows } from "../../lib/platform";
 import { t, tf } from "../../i18n";
 
 const ui = useUiStore();
@@ -341,6 +352,10 @@ async function addSnippet() {
 .st-tip {
   color: var(--text-muted);
   padding: 6px 0;
+}
+.st-tip-inline {
+  padding: 0;
+  font-size: var(--font-ui-smaller);
 }
 .st-tip code {
   background: var(--code-background);
