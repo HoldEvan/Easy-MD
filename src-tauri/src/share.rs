@@ -4,7 +4,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::{
     fs,
-    io::Write,
+    io::{Read, Write},
     net::{Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream},
     path::{Component, Path, PathBuf},
     sync::{
@@ -18,42 +18,96 @@ use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
 // tiny_http does not expose accepted sockets, and dropping Server does not cancel
 // responses already handed out. A bounded loopback relay gives us socket ownership
-// without duplicating HTTP parsing. Shutdown wakes blocked reads AND writes.
+// without duplicating HTTP parsing. Nonblocking I/O lets cancellation stop relays
+// even on Windows, where shutdown may not interrupt an already-blocked recv.
 struct ShareConnection {
     client: TcpStream,
     upstream: TcpStream,
+    stop: Arc<AtomicBool>,
     workers: Vec<JoinHandle<()>>,
+}
+
+fn relay_copy(
+    mut source: TcpStream,
+    mut destination: TcpStream,
+    stop: &AtomicBool,
+    read_timeout: Option<Duration>,
+) -> std::io::Result<()> {
+    let mut buffer = [0; 16 * 1024];
+    let mut last_read = std::time::Instant::now();
+    while !stop.load(Ordering::Acquire) {
+        let count = match source.read(&mut buffer) {
+            Ok(0) => return Ok(()),
+            Ok(count) => count,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                if read_timeout.is_some_and(|timeout| last_read.elapsed() >= timeout) {
+                    return Err(std::io::ErrorKind::TimedOut.into());
+                }
+                thread::park_timeout(Duration::from_millis(2));
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
+        let mut written = 0;
+        let mut last_write = std::time::Instant::now();
+        while written < count && !stop.load(Ordering::Acquire) {
+            match destination.write(&buffer[written..count]) {
+                Ok(0) => return Err(std::io::ErrorKind::WriteZero.into()),
+                Ok(count) => {
+                    written += count;
+                    last_write = std::time::Instant::now();
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    if last_write.elapsed() >= Duration::from_secs(5) {
+                        return Err(std::io::ErrorKind::TimedOut.into());
+                    }
+                    thread::park_timeout(Duration::from_millis(2));
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        last_read = std::time::Instant::now();
+    }
+    Err(std::io::ErrorKind::ConnectionAborted.into())
 }
 impl ShareConnection {
     fn start(client: TcpStream, address: SocketAddr) -> std::io::Result<Self> {
         let upstream = TcpStream::connect(address)?;
-        // Accepted sockets inherit O_NONBLOCK on some platforms (including macOS).
-        client.set_nonblocking(false)?;
-        client.set_read_timeout(Some(Duration::from_secs(30)))?;
-        client.set_write_timeout(Some(Duration::from_secs(5)))?;
-        upstream.set_write_timeout(Some(Duration::from_secs(5)))?;
+        client.set_nonblocking(true)?;
+        upstream.set_nonblocking(true)?;
         let mut connection = Self {
             client,
             upstream,
+            stop: Arc::new(AtomicBool::new(false)),
             workers: Vec::new(),
         };
-        for (source, destination) in [
-            (&connection.client, &connection.upstream),
-            (&connection.upstream, &connection.client),
+        for (source, destination, read_timeout) in [
+            (
+                &connection.client,
+                &connection.upstream,
+                Some(Duration::from_secs(30)),
+            ),
+            (&connection.upstream, &connection.client, None),
         ] {
-            let mut source = source.try_clone()?;
-            let mut destination = destination.try_clone()?;
+            let source = source.try_clone()?;
+            let destination = destination.try_clone()?;
+            let shutdown_source = source.try_clone()?;
+            let shutdown_destination = destination.try_clone()?;
+            let stop = connection.stop.clone();
             connection
                 .workers
                 .push(
                     thread::Builder::new()
                         .name("share-relay".into())
                         .spawn(move || {
-                            if std::io::copy(&mut source, &mut destination).is_ok() {
-                                let _ = destination.shutdown(Shutdown::Write);
+                            if relay_copy(source, destination, &stop, read_timeout).is_ok() {
+                                let _ = shutdown_destination.shutdown(Shutdown::Write);
                             } else {
-                                let _ = source.shutdown(Shutdown::Both);
-                                let _ = destination.shutdown(Shutdown::Both);
+                                stop.store(true, Ordering::Release);
+                                let _ = shutdown_source.shutdown(Shutdown::Both);
+                                let _ = shutdown_destination.shutdown(Shutdown::Both);
                             }
                         })?,
                 );
@@ -63,6 +117,7 @@ impl ShareConnection {
 }
 impl Drop for ShareConnection {
     fn drop(&mut self) {
+        self.stop.store(true, Ordering::Release);
         let _ = self.client.shutdown(Shutdown::Both);
         let _ = self.upstream.shutdown(Shutdown::Both);
         for worker in self.workers.drain(..) {
