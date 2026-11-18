@@ -24,6 +24,7 @@ import {
   type DecorationSet,
   ViewPlugin,
   hoverTooltip,
+  tooltips,
   keymap,
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
@@ -532,6 +533,8 @@ function makeState(): EditorState {
       markdown(),
       syntaxHighlighting(defaultHighlightStyle),
       markPlugin,
+      // Escape split-pane overflow/stacking contexts; keep viewport-based sizing.
+      tooltips({ parent: document.body, position: "fixed" }),
       imagePreviewTooltip,
       autocompletion({
         override: [
@@ -737,7 +740,11 @@ watch(
 .cm-host .cm-content ::selection {
   background: var(--selection-background) !important;
 }
-.cm-host .cm-tooltip-autocomplete > ul {
+/* CodeMirror tooltips are portalled to body, above both split panes. */
+body > .cm-tooltip {
+  z-index: 100;
+}
+.cm-tooltip-autocomplete > ul {
   font-family: var(--font-ui);
   max-height: 240px;
 }
