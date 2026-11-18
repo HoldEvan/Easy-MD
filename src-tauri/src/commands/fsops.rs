@@ -390,9 +390,17 @@ pub fn save_image(
     state: State<'_, AppState>,
     data: Vec<u8>,
     ext: String,
+    expected_root: Option<String>,
 ) -> Result<String, String> {
     let settings = config::load_settings(&app);
     with_vault(&state, |vc| {
+        // Validate while holding the vault lock: a queued image must never be
+        // saved into a different vault that opened while the IPC was pending.
+        if let Some(expected) = expected_root.as_deref() {
+            if std::path::Path::new(expected) != vc.root.as_path() {
+                return Err("知识库已切换，请回到原知识库后重试".to_string());
+            }
+        }
         let dir = settings
             .attachments_dir
             .trim()

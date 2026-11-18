@@ -9,7 +9,7 @@
       />
     </transition>
     <transition name="emd-pop">
-      <div v-if="open" ref="menuEl" class="emd-dropdown" :style="pos" @pointerdown.stop>
+      <div v-if="open" ref="menuEl" class="emd-dropdown" :style="[pos, maxHeight ? { maxHeight, overflowY: 'auto' } : {}]" @pointerdown.stop>
         <div v-if="title" class="emd-dd-title">{{ title }}</div>
         <template v-for="item in items" :key="item.key">
           <div v-if="item.separator" class="emd-dd-sep" />
@@ -55,6 +55,7 @@ const props = withDefaults(
     y?: number;
     align?: "left" | "right";
     title?: string;
+    maxHeight?: string;
   }>(),
   { items: () => [], anchor: null, x: undefined, y: undefined, align: "left", title: "" },
 );

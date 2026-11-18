@@ -36,3 +36,17 @@
 - 前端：Vue 3 `<script setup lang="ts">` + Pinia + CodeMirror 6 + markdown-it + force-graph。
 - 后端：Rust（tauri 2 命令层 + index/ 索引引擎 + mcp/ 同步客户端）。
 - 验证：改前端必须过 `npm run build`；改 Rust 必须过 `cargo check` / `cargo test`。
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues in HoldEvan/Easy-MD. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default five-role triage vocabulary. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+single-context: root GLOSSARY.md and docs/adr/. See `docs/agents/domain.md`.

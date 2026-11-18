@@ -317,6 +317,7 @@ async function goInternal(target: string, sub: string) {
     return;
   }
   const res = resolveTarget(target, indexStore.notes);
+  if (res.ambiguous) return;
   if (!res.path) {
     // 未解析 → 询问创建
     if (confirm(`${t("pv.createConfirm").replace("{name}", target)}`)) {
@@ -409,6 +410,19 @@ onUnmounted(() => {});
   margin: 0.9em 0;
   padding: 0.1em 1em;
   color: var(--text-muted);
+}
+.markdown-rendered kbd {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid var(--background-modifier-border);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  line-height: 1.5;
+  vertical-align: baseline;
 }
 .markdown-rendered code {
   font-family: var(--font-mono);

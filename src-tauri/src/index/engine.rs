@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 /// 缓存结构版本号：模型变更时 +1，旧缓存自动失效重建
-pub const CACHE_VERSION: u32 = 1;
+pub const CACHE_VERSION: u32 = 2;
 
 #[derive(Default)]
 pub struct IndexEngine {
@@ -46,6 +46,27 @@ fn file_stem_of(rel: &str) -> String {
         .unwrap_or_else(|| rel.to_string())
 }
 
+fn normalize_path(path: &str) -> Option<String> {
+    let mut segments = Vec::new();
+    for segment in path.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop()?;
+            }
+            _ => segments.push(segment),
+        }
+    }
+    Some(segments.join("/"))
+}
+
+fn resolution(paths: Vec<&String>) -> ResolveResult {
+    ResolveResult {
+        path: (paths.len() == 1).then(|| paths[0].clone()),
+        ambiguous: paths.len() > 1,
+    }
+}
+
 impl IndexEngine {
     /// 全量扫描
     pub fn scan(root: &Path) -> Result<Self> {
@@ -64,7 +85,7 @@ impl IndexEngine {
             if entry
                 .path()
                 .extension()
-                .map(|e| e.eq_ignore_ascii_case("md"))
+                .map(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown"))
                 .unwrap_or(false)
             {
                 let rel = rel_path(root, entry.path());
@@ -93,7 +114,7 @@ impl IndexEngine {
             if entry
                 .path()
                 .extension()
-                .map(|e| e.eq_ignore_ascii_case("md"))
+                .map(|e| e.eq_ignore_ascii_case("md") || e.eq_ignore_ascii_case("markdown"))
                 .unwrap_or(false)
             {
                 let rel = rel_path(root, entry.path());
@@ -173,75 +194,106 @@ impl IndexEngine {
             .join(format!("{}.json", hex))
     }
 
-    /// 解析链接目标：文件名（含路径）→ 别名，同名多个时 ambiguous
+    /// Compatibility entry point for callers without a source note.
     pub fn resolve(&self, target: &str) -> ResolveResult {
-        let t = target.trim();
-        if t.is_empty() {
-            return ResolveResult {
-                path: None,
-                ambiguous: false,
-            };
-        }
-        let t_norm = t.replace('\\', "/");
-        let t_lower = t_norm.to_lowercase();
+        self.resolve_from(target, None)
+    }
 
-        // 1) 带路径的精确匹配：目标本身 或 目标.md
-        if t_norm.contains('/') {
-            let direct = self.notes.keys().find(|k| {
-                k.to_lowercase() == t_lower || k.to_lowercase() == format!("{}.md", t_lower)
-            });
-            if let Some(p) = direct {
-                return ResolveResult {
-                    path: Some(p.clone()),
-                    ambiguous: false,
-                };
-            }
-        }
-
-        // 2) 文件名匹配（目标带 .md 后缀时按去后缀比较，与 Obsidian 一致）
-        let stem_lower = t_lower.strip_suffix(".md").unwrap_or(t_lower.as_str());
-        let by_title: Vec<&String> = self
-            .notes
-            .keys()
-            .filter(|k| file_stem_of(k).to_lowercase() == stem_lower)
-            .collect();
-        if by_title.len() == 1 {
-            return ResolveResult {
-                path: Some(by_title[0].clone()),
-                ambiguous: false,
-            };
-        }
-        if by_title.len() > 1 {
-            return ResolveResult {
-                path: Some(by_title[0].clone()),
-                ambiguous: true,
-            };
-        }
-
-        // 3) 别名匹配
-        let by_alias: Vec<&String> = self
-            .notes
-            .iter()
-            .filter(|(_, n)| n.aliases.iter().any(|a| a.to_lowercase() == t_lower))
-            .map(|(k, _)| k)
-            .collect();
-        if by_alias.len() == 1 {
-            return ResolveResult {
-                path: Some(by_alias[0].clone()),
-                ambiguous: false,
-            };
-        }
-        if by_alias.len() > 1 {
-            return ResolveResult {
-                path: Some(by_alias[0].clone()),
-                ambiguous: true,
-            };
-        }
-
-        ResolveResult {
+    /// Resolve local paths before global stems/aliases; ambiguous links never pick arbitrarily.
+    pub fn resolve_from(&self, target: &str, source_path: Option<&str>) -> ResolveResult {
+        let missing = || ResolveResult {
             path: None,
             ambiguous: false,
+        };
+        if !parser::is_note_target(target) {
+            return missing();
         }
+        let decoded = percent_encoding::percent_decode_str(target).decode_utf8_lossy();
+        let target = decoded.trim().replace('\\', "/");
+        if target.is_empty() {
+            return missing();
+        }
+        let source_dir = source_path
+            .and_then(|p| p.rsplit_once('/').map(|(dir, _)| dir))
+            .unwrap_or("");
+        let rooted = target.starts_with('/');
+        let relative = target.starts_with("./") || target.starts_with("../");
+        let exact = |candidate: &str| {
+            let candidate = candidate.to_lowercase();
+            let paths: Vec<_> = self
+                .notes
+                .keys()
+                .filter(|path| {
+                    let path = path.to_lowercase();
+                    path == candidate
+                        || path == format!("{candidate}.md")
+                        || path == format!("{candidate}.markdown")
+                })
+                .collect();
+            resolution(paths)
+        };
+        if !rooted && source_path.is_some() {
+            if let Some(candidate) =
+                normalize_path(&format!("{source_dir}/{target}").trim_start_matches('/'))
+            {
+                let result = exact(&candidate);
+                if result.path.is_some() || result.ambiguous {
+                    return result;
+                }
+            }
+        }
+        if relative {
+            return missing();
+        }
+        if let Some(candidate) = normalize_path(target.trim_start_matches('/')) {
+            let result = exact(&candidate);
+            if result.path.is_some() || result.ambiguous {
+                return result;
+            }
+        }
+        if rooted || target.contains('/') {
+            return missing();
+        }
+        let lower = target.to_lowercase();
+        let stem = lower
+            .strip_suffix(".markdown")
+            .or_else(|| lower.strip_suffix(".md"))
+            .unwrap_or(&lower);
+        let by_stem: Vec<_> = self
+            .notes
+            .keys()
+            .filter(|path| file_stem_of(path).to_lowercase() == stem)
+            .collect();
+        if !by_stem.is_empty() {
+            return resolution(by_stem);
+        }
+        let aliases: Vec<_> = self
+            .notes
+            .iter()
+            .filter(|(_, note)| {
+                note.aliases
+                    .iter()
+                    .any(|alias| alias.to_lowercase() == lower)
+            })
+            .map(|(path, _)| path)
+            .collect();
+        if source_path.is_some() {
+            let local: Vec<_> = aliases
+                .iter()
+                .copied()
+                .filter(|path| {
+                    path.rsplit_once('/')
+                        .map(|(dir, _)| dir)
+                        .unwrap_or("")
+                        .to_lowercase()
+                        == source_dir.to_lowercase()
+                })
+                .collect();
+            if !local.is_empty() {
+                return resolution(local);
+            }
+        }
+        resolution(aliases)
     }
 
     /// 反向链接：引用了 note_path 的所有其它笔记
@@ -256,7 +308,7 @@ impl IndexEngine {
                 if link.target.is_empty() {
                     continue;
                 }
-                if let Some(resolved) = self.resolve(&link.target).path {
+                if let Some(resolved) = self.resolve_from(&link.target, Some(src)).path {
                     if resolved == note_path {
                         out.push(Backlink {
                             source: src.clone(),
@@ -382,6 +434,50 @@ mod tests {
         assert_eq!(bl.len(), 2);
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn source_paths_disambiguate_and_backlinks_agree() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "a/source.md", "[local](same.md) [[../b/same]] [[/b/same]] [[Note%20A]] [[hash%23name]] [[../../b/same]] [[photo.pdf]]");
+        write(dir.path(), "a/same.md", "");
+        write(dir.path(), "b/same.md", "");
+        write(dir.path(), "a/Note A.markdown", "");
+        write(dir.path(), "a/hash#name.md", "");
+        write(dir.path(), "photo.pdf.md", "");
+        let engine = IndexEngine::scan(dir.path()).unwrap();
+        assert!(engine.resolve("same").ambiguous);
+        assert!(engine.resolve("same").path.is_none());
+        assert_eq!(
+            engine
+                .resolve_from("same", Some("a/source.md"))
+                .path
+                .as_deref(),
+            Some("a/same.md")
+        );
+        assert_eq!(
+            engine
+                .resolve_from("../b/same", Some("a/source.md"))
+                .path
+                .as_deref(),
+            Some("b/same.md")
+        );
+        assert_eq!(
+            engine
+                .resolve_from("/b/same", Some("a/source.md"))
+                .path
+                .as_deref(),
+            Some("b/same.md")
+        );
+        assert!(engine
+            .resolve_from("../../b/same", Some("a/source.md"))
+            .path
+            .is_none());
+        assert_eq!(engine.backlinks("a/same.md").len(), 1);
+        assert_eq!(engine.backlinks("b/same.md").len(), 2);
+        assert_eq!(engine.backlinks("a/Note A.markdown").len(), 1);
+        assert_eq!(engine.backlinks("a/hash#name.md").len(), 1);
+        assert!(engine.backlinks("photo.pdf.md").is_empty());
     }
 
     #[test]

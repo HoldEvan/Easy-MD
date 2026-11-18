@@ -71,7 +71,7 @@ const outgoing = computed<OutLink[]>(() => {
   for (const link of note.links) {
     if (!link.target || seen.has(link.target)) continue; // 同页引用/重复目标去重
     seen.add(link.target);
-    const res = resolveTarget(link.target, indexStore.notes);
+    const res = resolveTarget(link.target, indexStore.notes, note.path);
     const title = res.path ? indexStore.byPath[res.path]?.title : null;
     out.push({
       key: link.target,

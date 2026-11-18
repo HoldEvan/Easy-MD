@@ -169,8 +169,10 @@
 
     <ShareDialog v-if="shareOpen" @close="shareOpen = false" />
 
+    <ImageUploadQueue :jobs="images.jobs" :notice="images.notice.value" :busy="images.busy.value" @retry="images.retry" @local="images.retry($event, true)" @cancel="images.cancel" @dismiss="images.notice.value = ''" />
+
     <!-- 主体 -->
-    <div ref="bodyEl" class="ep-body" :class="`ep-${editor.mode}`">
+    <div ref="bodyEl" class="ep-body" :class="`ep-${editor.mode}`" @paste.capture="images.paste" @drop.capture="images.drop" @dragover.capture="images.dragOver">
       <div
         v-if="editor.mode !== 'preview'"
         class="ep-source"
@@ -204,6 +206,8 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "../common/Icon.vue";
 import ShareDialog from "../common/ShareDialog.vue";
+import ImageUploadQueue from "./ImageUploadQueue.vue";
+import { useImageInsertion } from "../../composables/useImageInsertion";
 import DropdownMenu, { type DropItem } from "../common/DropdownMenu.vue";
 import SourceEditor from "./SourceEditor.vue";
 import PreviewView from "./PreviewView.vue";
@@ -218,7 +222,7 @@ import { addTagToContent } from "../../lib/tags";
 import { applyTemplateVars, listTemplates } from "../../lib/template";
 import { useAiStore } from "../../stores/ai";
 import { t, tf } from "../../i18n";
-import { keyHint } from "../../lib/platform";
+import { isMac, keyHint } from "../../lib/platform";
 
 const editor = useEditorStore();
 const ui = useUiStore();
@@ -231,6 +235,10 @@ const shareOpen = ref(false);
 const moreBtn = ref<HTMLElement>();
 const bodyEl = ref<HTMLElement>();
 const splitRatio = ref(50);
+const images = useImageInsertion(bodyEl, (text) => {
+  editor.insertText(text);
+  if (editor.mode === "preview") editor.setMode("split");
+});
 
 // ---- 模板下拉 ----
 const tplOpen = ref(false);
@@ -381,6 +389,7 @@ const formatBar = computed(() => [
 ]);
 
 function runFormat(key: string) {
+  if (key === "image") { void images.choose(); return; }
   window.dispatchEvent(new CustomEvent("emd-format", { detail: key }));
 }
 
@@ -391,7 +400,7 @@ const menuItems = computed<DropItem[]>(() => [
   { key: "md", label: t("ed.expMd"), icon: "download", hint: t("ed.keepWiki") },
   { key: "html", label: t("ed.expHtml"), icon: "download", hint: t("ed.singleFile") },
   { key: "pdf", label: t("ed.expPdf"), icon: "download", hint: t("ed.printHint") },
-  { key: "share", label: "分享", icon: "share-2", hint: keyHint("Ctrl+F5") },
+  { key: "share", label: "分享", icon: "share-2", hint: keyHint(isMac ? "Ctrl+Shift+F5" : "Ctrl+F5") },
   { key: "sep-view", label: "", separator: true },
   { key: "graph", label: t("ed.openGraph"), icon: "share-2", hint: keyHint("Ctrl+G") },
   { key: "search", label: t("ed.searchAll"), icon: "search", hint: keyHint("Ctrl+Shift+F") },
@@ -460,45 +469,19 @@ async function onJump(target: { path?: string; anchor?: string; line?: number })
   });
 }
 
-// ---- 图片粘贴：容器层统一处理（capture，任何模式/焦点位置都生效） ----
-// 不放在 CodeMirror 里：保存图片的 await 期间组件可能因切模式/切笔记被销毁，
-// 旧实现 dispatch 到已销毁的 view 会静默丢失插入内容（图片入库但语法没进笔记）。
-function onBodyPaste(ev: ClipboardEvent) {
-  if (!editor.isOpen) return;
-  const items = ev.clipboardData?.items;
-  if (!items) return;
-  for (const item of Array.from(items)) {
-    if (!item.type.startsWith("image/")) continue;
-    const file = item.getAsFile();
-    if (!file) continue;
-    ev.preventDefault();
-    ev.stopPropagation();
-    const ext = (file.name.split(".").pop() || "png").toLowerCase();
-    file.arrayBuffer()
-      .then(async (buf) => {
-        const rel = await api.saveImage(Array.from(new Uint8Array(buf)), ext);
-        // 阅读模式下看不到源码，切到分屏让用户立即看到图片
-        if (editor.mode === "preview") editor.setMode("split");
-        // <> 包裹：文件名带空格（Pasted image ….png）时裸目标不是合法链接语法
-        editor.insertText(`![](<${rel}>)`);
-      })
-      .catch((e) => console.error("粘贴图片失败：", e));
-    return;
-  }
-}
-
 function onShareShortcut(event: KeyboardEvent) {
-  if (event.key !== "F5" || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+  const matches = isMac
+    ? event.metaKey && event.shiftKey && !event.ctrlKey
+    : event.ctrlKey && !event.shiftKey && !event.metaKey;
+  if (event.key !== "F5" || !matches || event.altKey) return;
   event.preventDefault();
   if (!event.repeat) void onMenuSelect("share");
 }
 
 onMounted(() => {
-  bodyEl.value?.addEventListener("paste", onBodyPaste, true);
   window.addEventListener("keydown", onShareShortcut, true);
 });
 onUnmounted(() => {
-  bodyEl.value?.removeEventListener("paste", onBodyPaste, true);
   window.removeEventListener("keydown", onShareShortcut, true);
 });
 </script>

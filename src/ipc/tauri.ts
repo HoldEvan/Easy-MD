@@ -50,7 +50,7 @@ export const api = {
     invoke<string>("create_folder", { parent, name }),
   renamePath: (path: string, name: string) => invoke<string>("rename_path", { path, name }),
   deletePath: (path: string) => invoke<void>("delete_path", { path }),
-  saveImage: (data: number[], ext: string) => invoke<string>("save_image", { data, ext }),
+  saveImage: (data: number[], ext: string, expectedRoot?: string) => invoke<string>("save_image", { data, ext, expectedRoot }),
   writeExternal: (path: string, content: string) =>
     invoke<void>("write_external", { path, content }),
 
@@ -104,6 +104,8 @@ export const api = {
     }>("mcp_sync"),
 
   // ---- AI ----
+  aiListModels: (provider: string, baseUrl: string, apiKey: string) =>
+    invoke<string[]>("ai_list_models", { provider, baseUrl, apiKey }),
   aiChat: (prompt: string, system?: string | null) =>
     invoke<string>("ai_chat", { prompt, system: system ?? null }),
 

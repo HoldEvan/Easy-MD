@@ -651,6 +651,7 @@ onMounted(() => {
   flex-direction: column;
   background: var(--background-primary);
   overflow: hidden;
+  container-type: inline-size;
 }
 
 /* 头部 */
@@ -708,7 +709,7 @@ onMounted(() => {
 }
 .cal-weekdays {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 3px;
   margin-bottom: 4px;
   flex-shrink: 0;
@@ -721,8 +722,8 @@ onMounted(() => {
 }
 .cal-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  grid-template-rows: repeat(6, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-rows: repeat(6, minmax(min-content, 1fr));
   gap: 3px;
   flex: 1;
   min-height: 0;
@@ -738,6 +739,7 @@ onMounted(() => {
   cursor: pointer;
   transition: background var(--anim-fast), border-color var(--anim-fast);
   min-height: 86px;
+  min-width: 0;
   text-align: center;
 }
 .cal-cell:hover { background: var(--background-modifier-hover); }
@@ -753,6 +755,8 @@ onMounted(() => {
   margin-bottom: 4px;
 }
 .cal-stats {
+  width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -762,8 +766,18 @@ onMounted(() => {
   font-size: 13px;
   line-height: 1.5;
   color: var(--text-normal);
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 100%;
   font-weight: 500;
+}
+
+@container (max-width: 760px) {
+  .cal-body { flex-direction: column; overflow-y: auto; }
+  .cal-grid-area { flex: 0 0 auto; overflow: visible; padding: 8px; }
+  .cal-body > .cal-side { width: 100%; min-height: 160px; max-height: 240px; flex-shrink: 0; border-left: 0; border-top: 1px solid var(--background-modifier-border); }
+  .cal-cell { padding: 6px 2px; }
+  .cal-stat { font-size: var(--font-ui-smaller); }
 }
 
 /* 右侧面板 */

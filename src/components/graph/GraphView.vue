@@ -72,6 +72,12 @@
         <template v-else>
           <div class="gv-sep" />
           <label class="gv-check">
+            <input v-model="localOnly" type="checkbox" :disabled="!editor.activePath" /> 当前笔记
+          </label>
+          <select v-if="localOnly" v-model.number="localDepth" aria-label="关系层数">
+            <option v-for="depth in 3" :key="depth" :value="depth">{{ depth }} 层</option>
+          </select>
+          <label class="gv-check">
             <input v-model="showOrphans" type="checkbox" /> {{ t("gf.orphans") }}
           </label>
           <label class="gv-check">
@@ -82,6 +88,11 @@
           </button>
         </template>
 
+        <form class="gv-search" @submit.prevent="locateNode">
+          <input v-model="searchQuery" aria-label="搜索节点" placeholder="搜索节点" @input="searchIndex = 0" />
+          <button class="emd-btn" :disabled="!searchMatches.length" type="submit">定位<span v-if="searchQuery">（{{ searchMatches.length }}）</span></button>
+        </form>
+        <button class="emd-btn" title="适配全部节点" @click="fitGraph">全图适配</button>
         <span class="gv-count">{{ tf("gf.counts", { n: nodesCount, m: linksCount }) }}</span>
         <button class="emd-btn" :title="t('gf.relayout')" @click="reheat">
           <Icon name="refresh-cw" :size="12" />
@@ -89,6 +100,7 @@
         <button class="emd-btn" @click="closeGraph">{{ t("gf.back") }}</button>
       </div>
 
+      <div v-if="graphError" class="gv-error" role="alert">{{ graphError }}</div>
       <div class="gv-canvas-wrap">
         <div ref="container" class="gv-canvas" />
         <div v-if="isManual && doc && doc.nodes.length === 0" class="gv-empty">
@@ -147,6 +159,7 @@ import { useNotesIndexStore } from "../../stores/notesIndex";
 import { useEditorStore } from "../../stores/editor";
 import { useUiStore } from "../../stores/ui";
 import { useSettingsStore } from "../../stores/settings";
+import { buildAutoGraph, localGraph } from "../../lib/graph/data";
 import { resolveTarget } from "../../lib/markdown/links";
 import { t, tf } from "../../i18n";
 import Icon from "../common/Icon.vue";
@@ -170,9 +183,23 @@ const settings = useSettingsStore();
 
 // ---------- 状态 ----------
 const showOrphans = ref(true);
+const localOnly = ref(false);
+const localDepth = ref(1);
+const searchQuery = ref("");
+const searchIndex = ref(0);
+let resizeObserver: ResizeObserver | undefined;
+let unsubscribeSettings: (() => void) | undefined;
+let disposed = false;
+let loadRevision = 0;
+let docPath = "";
+let dirty = false;
+let saveQueue: Promise<void> = Promise.resolve();
+let pendingWrites = 0;
+const graphError = ref("");
 const showUnresolved = ref(true);
 const container = ref<HTMLElement>();
 let fg: LooseFG = null;
+let renderedData: unknown = null;
 
 /** .graph 文件列表 */
 const graphs = ref<{ path: string; mtime: number }[]>([]);
@@ -242,6 +269,7 @@ async function onGraphMenu(key: string) {
   } else if (key === "delete") {
     if (!confirm(tf("gf.deleteConfirm", { name: graphNameOf(path) }))) return;
     try {
+      await flushSave();
       await api.deletePath(path);
       if (ui.graphPath === path) {
         ui.graphPath = "";
@@ -271,42 +299,9 @@ interface GLink {
 
 /** 自动图谱：笔记节点 + 已解析链接边；可选未解析虚拟节点 */
 const autoData = computed<{ nodes: GNode[]; links: GLink[] }>(() => {
-  const notes = indexStore.notes;
-  const nodes: GNode[] = [];
-  const links: GLink[] = [];
-  const idSet = new Set(notes.map((n) => n.path));
-
-  for (const n of notes) {
-    nodes.push({ id: n.path, title: n.title, degree: 0, unresolved: false });
-  }
-  for (const n of notes) {
-    for (const link of n.links) {
-      if (!link.target) continue; // 同页引用不画边
-      const res = resolveTarget(link.target, notes);
-      if (res.path && idSet.has(res.path)) {
-        if (res.path !== n.path) links.push({ source: n.path, target: res.path });
-      } else if (showUnresolved.value) {
-        const vid = `?${link.target}`;
-        if (!nodes.find((x) => x.id === vid)) {
-          nodes.push({ id: vid, title: link.target, degree: 0, unresolved: true });
-        }
-        links.push({ source: n.path, target: vid });
-      }
-    }
-  }
-
-  const degree = new Map<string, number>();
-  for (const l of links) {
-    const s = typeof l.source === "string" ? l.source : l.source.id;
-    const tg = typeof l.target === "string" ? l.target : l.target.id;
-    degree.set(s, (degree.get(s) || 0) + 1);
-    degree.set(tg, (degree.get(tg) || 0) + 1);
-  }
-  const outNodes = showOrphans.value
-    ? nodes
-    : nodes.filter((n) => (degree.get(n.id) || 0) > 0 || n.unresolved);
-  for (const n of outNodes) n.degree = degree.get(n.id) || 0;
-  return { nodes: outNodes, links };
+  const all = buildAutoGraph(indexStore.notes, showUnresolved.value);
+  const data = localOnly.value ? localGraph(all, editor.activePath, localDepth.value) : all;
+  return { ...data, nodes: data.nodes.filter(n => showOrphans.value || n.degree > 0 || (localOnly.value && n.id === editor.activePath)) };
 });
 
 /** 手动图谱：doc → 渲染节点（保留已存坐标，其余交给力导向布局） */
@@ -337,31 +332,33 @@ function cssVar(name: string): string {
 }
 
 function render() {
-  if (!container.value) return;
-  const accent = cssVar("--graph-node") || "#a882ff";
-  const lineColor = cssVar("--graph-line") || "rgba(255,255,255,0.14)";
-  const textColor = cssVar("--graph-text") || "#b3b3b3";
-  const bg = cssVar("--background-primary") || "#1e1e1e";
-  const manual = isManual.value;
+  if (!container.value || disposed) return;
+  const accent = cssVar("--graph-node") || cssVar("--text-accent");
+  const lineColor = cssVar("--graph-line") || cssVar("--background-modifier-border");
+  const textColor = cssVar("--graph-text") || cssVar("--text-muted");
+  const bg = cssVar("--background-primary");
+  const faintColor = cssVar("--text-faint");
+  const mutedColor = cssVar("--text-muted");
 
   if (!fg) {
-    fg = ForceGraph(container.value);
-    fg
+    fg = new ForceGraph(container.value);
+  }
+  fg
       .backgroundColor(bg)
       .nodeLabel((n: GNode & { label?: string }) =>
-        manual ? n.label || "" : `${n.title}${n.unresolved ? t("gf.uncreated") : ""}`,
+        isManual.value ? n.label || "" : `${n.title}${n.unresolved ? t("gf.uncreated") : ""}`,
       )
       .nodeVal((n: GNode) => 2 + (n.degree / Math.max(1, maxDegree())) * 8)
       .nodeCanvasObject(
         (n: GNode & { label?: string; note?: string }, ctx: CanvasRenderingContext2D, globalScale: number) => {
           const r = 3 + (n.degree / Math.max(1, maxDegree())) * 6;
-          const isSel = manual && (n.id === selectedId.value || n.id === linkFrom.value);
+          const isSel = n.id === selectedId.value || n.id === linkFrom.value;
           ctx.beginPath();
           ctx.arc(n.x || 0, n.y || 0, r, 0, 2 * Math.PI);
-          if (manual) {
+          if (isManual.value) {
             ctx.fillStyle = n.note ? accent : hexA(accent, 0.5);
           } else {
-            ctx.fillStyle = n.unresolved ? "rgba(150,150,150,0.45)" : accent;
+            ctx.fillStyle = n.unresolved ? faintColor : accent;
           }
           ctx.fill();
           if (isSel) {
@@ -369,16 +366,16 @@ function render() {
             ctx.lineWidth = 2 / globalScale;
             ctx.stroke();
           }
-          const label = (manual ? n.label : n.title) ?? "";
-          if (manual || globalScale > 1.2 || n.degree > 0) {
+          const label = (isManual.value ? n.label : n.title) ?? "";
+          if (isManual.value || globalScale > 1.2 || n.degree > 0) {
             const text = label.length > 14 ? label.slice(0, 13) + "…" : label;
             ctx.font = `${10 / globalScale}px sans-serif`;
-            ctx.fillStyle = manual
+            ctx.fillStyle = isManual.value
               ? n.note
                 ? textColor
                 : hexA(textColor, 0.65)
               : n.unresolved
-                ? "rgba(150,150,150,0.8)"
+                ? mutedColor
                 : textColor;
             ctx.textAlign = "center";
             ctx.fillText(text, n.x || 0, (n.y || 0) + r + 10 / globalScale);
@@ -389,7 +386,7 @@ function render() {
       .linkWidth(0.8)
       .cooldownTime(2400)
       .onNodeClick((n: GNode & { note?: string }) => {
-        if (!manual) {
+        if (!isManual.value) {
           if (n.unresolved) {
             if (confirm(t("gf.createConfirm").replace("{name}", n.title))) {
               import("../../stores/vault").then(({ useVaultStore }) =>
@@ -402,6 +399,7 @@ function render() {
           return;
         }
         // 手动图谱
+        if (!doc.value) return;
         if (tool.value === "link" && editMode.value) {
           if (!linkFrom.value) {
             linkFrom.value = n.id;
@@ -415,7 +413,7 @@ function render() {
           return;
         }
         if (tool.value === "select") {
-          if (n.note) {
+          if (n.note && !editMode.value) {
             openNote(n.note);
           } else {
             selectedId.value = selectedId.value === n.id ? null : n.id;
@@ -424,14 +422,14 @@ function render() {
         }
       })
       .onNodeRightClick((n: GNode & { label?: string }, ev: MouseEvent) => {
-        if (!manual) return;
+        if (!isManual.value || !doc.value) return;
         nodeMenu.x = ev.clientX;
         nodeMenu.y = ev.clientY;
         nodeMenu.target = findNode(n.id) || { ...n } as GraphNode;
         nodeMenu.open = true;
       })
-      .onEdgeClick((edge: { source: GNode; target: GNode }) => {
-        if (!manual || !editMode.value) return;
+      .onLinkClick((edge: { source: GNode; target: GNode }) => {
+        if (!isManual.value || !editMode.value) return;
         if (!confirm(t("gf.deleteEdgeConfirm"))) return;
         const s = typeof edge.source === "object" ? edge.source.id : edge.source;
         const tg = typeof edge.target === "object" ? edge.target.id : edge.target;
@@ -441,14 +439,14 @@ function render() {
         mutateSaved();
       })
       .onBackgroundClick((ev: MouseEvent) => {
-        if (!manual || !editMode.value || tool.value !== "addNode") return;
+        if (!isManual.value || !editMode.value || tool.value !== "addNode") return;
         const rect = container.value!.getBoundingClientRect();
         const p = fg.screen2GraphCoords(ev.clientX - rect.left, ev.clientY - rect.top);
         pendingAddPos = { x: p.x, y: p.y };
         openDialog("newNodeLabel");
       })
       .onNodeDragEnd((n: GNode) => {
-        if (!manual) return;
+        if (!isManual.value || !editMode.value) return;
         const target = findNode(n.id);
         if (target) {
           target.x = n.x;
@@ -456,17 +454,16 @@ function render() {
         }
         scheduleSave();
       });
-    fg.enableNodeDrag(manual);
-  } else {
-    fg.backgroundColor(bg);
-    fg.enableNodeDrag(manual);
+  fg.enableNodeDrag(isManual.value && editMode.value);
+  onResize();
+  if (renderedData !== currentData.value) {
+    renderedData = currentData.value;
+    fg.graphData(JSON.parse(JSON.stringify(currentData.value)));
   }
-  fg.graphData(JSON.parse(JSON.stringify(currentData.value)));
 }
 
-function maxDegree(): number {
-  return Math.max(1, ...currentData.value.nodes.map((n) => n.degree));
-}
+const maximumDegree = computed(() => currentData.value.nodes.reduce((max, n) => Math.max(max, n.degree), 1));
+function maxDegree(): number { return maximumDegree.value; }
 
 /** #rrggbb → rgba */
 function hexA(hex: string, alpha: number): string {
@@ -478,24 +475,44 @@ function hexA(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+const searchMatches = computed(() => {
+  const query = searchQuery.value.trim().toLocaleLowerCase();
+  return query ? currentData.value.nodes.filter(n => {
+    const label = "label" in n ? n.label : n.title;
+    return `${label} ${n.id}`.toLocaleLowerCase().includes(query);
+  }) : [];
+});
+function locateNode() {
+  const matches = searchMatches.value;
+  if (!fg || !matches.length) return;
+  const match = matches[searchIndex.value++ % matches.length];
+  const node = fg.graphData().nodes.find((n: GNode) => n.id === match.id);
+  if (!node || !Number.isFinite(node.x) || !Number.isFinite(node.y)) return;
+  selectedId.value = node.id;
+  fg.centerAt(node.x, node.y, 300);
+  fg.zoom(2, 300);
+}
+function fitGraph() { fg?.zoomToFit(300, 40); }
+
 function reheat() {
   fg?.d3ReheatSimulation();
 }
 
 async function openNote(path: string) {
-  await editor.openNote(path);
-  ui.view = "editor";
+  await flushSave();
+  try { await editor.openNote(path); ui.view = "editor"; }
+  catch (e) { graphError.value = `无法打开笔记：${e}`; }
 }
 
 function closeGraph() {
-  flushSave();
+  void flushSave();
   ui.view = "editor";
 }
 
 function onResize() {
   if (fg && container.value) {
-    fg.width(container.value.clientWidth);
-    fg.height(container.value.clientHeight);
+    fg.width(Math.max(1, container.value.clientWidth));
+    fg.height(Math.max(1, container.value.clientHeight));
   }
 }
 
@@ -515,18 +532,30 @@ function onSelectGraph(key: string) {
 }
 
 async function loadDoc(silent = false) {
-  if (!isManual.value) {
-    doc.value = null;
-    return;
-  }
+  const revision = ++loadRevision;
+  const path = ui.graphPath;
+  doc.value = null;
+  docPath = "";
+  dirty = false;
+  if (!path) return;
   try {
-    const text = await api.readTextFile(ui.graphPath);
+    await saveQueue;
+    const text = await api.readTextFile(path);
     const parsed = JSON.parse(text) as GraphDoc;
-    if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) throw new Error("bad shape");
+    if (!parsed || !Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)
+      || parsed.nodes.some(n => !n || typeof n.id !== "string" || typeof n.label !== "string")
+      || new Set(parsed.nodes.map(n => n.id)).size !== parsed.nodes.length
+      || parsed.edges.some(e => !e || typeof e.source !== "string" || typeof e.target !== "string")) {
+      throw new Error("图谱数据格式无效");
+    }
+    if (disposed || revision !== loadRevision || path !== ui.graphPath) return;
+    docPath = path;
     doc.value = { version: 1, mode: "manual", nodes: parsed.nodes, edges: parsed.edges };
+    graphError.value = "";
   } catch (e) {
-    if (!silent) alert(`${t("gf.loadFail")}: ${e}`);
-    doc.value = { version: 1, mode: "manual", nodes: [], edges: [] };
+    if (disposed || revision !== loadRevision || path !== ui.graphPath) return;
+    // Keep a failed document absent: never overwrite corrupt data with an empty graph.
+    if (!silent) graphError.value = `${t("gf.loadFail")}: ${e}`;
   }
 }
 
@@ -542,13 +571,12 @@ async function uniquePath(name: string): Promise<string> {
 }
 
 async function createGraph(name: string, init: GraphDoc) {
+  await flushSave();
+  const startingPath = ui.graphPath;
   const rel = await uniquePath(name);
   await api.writeTextFile(rel, JSON.stringify(init, null, 2));
   await refreshGraphs();
-  ui.graphPath = rel;
-  doc.value = init;
-  editMode.value = init.nodes.length > 0 || init.edges.length > 0;
-  tool.value = "select";
+  if (!disposed && ui.graphPath === startingPath) onSelectGraph(rel);
   return rel;
 }
 
@@ -585,6 +613,7 @@ function newNodeId(): string {
 }
 
 function toggleEdit() {
+  if (!doc.value) return;
   editMode.value = !editMode.value;
   if (!editMode.value) {
     tool.value = "select";
@@ -695,8 +724,10 @@ async function onDialogConfirm(value: string) {
     } else if (mode === "newNodeLabel") {
       addNodeAt(v);
     } else if (mode === "rename" && isManual.value) {
-      const newPath = await api.renamePath(ui.graphPath, v);
-      ui.graphPath = newPath;
+      const oldPath = ui.graphPath;
+      await flushSave();
+      const newPath = await api.renamePath(oldPath, v);
+      if (ui.graphPath === oldPath) ui.graphPath = newPath;
       await refreshGraphs();
     } else if (mode === "renameNode" && nodeMenu.target) {
       nodeMenu.target.label = v;
@@ -704,7 +735,7 @@ async function onDialogConfirm(value: string) {
       render();
     } else if (mode === "bind" && nodeMenu.target) {
       const res = resolveTarget(v, indexStore.notes);
-      if (!res.path) {
+      if (!res.path || res.ambiguous) {
         alert(t("gf.bindNotFound"));
         return;
       }
@@ -789,22 +820,28 @@ function captureLivePositions() {
 }
 
 function scheduleSave() {
-  if (!isManual.value || !doc.value) return;
+  if (!docPath || !doc.value) return;
+  dirty = true;
   if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(flushSave, 400);
+  saveTimer = setTimeout(() => void flushSave(), 400);
 }
 
-async function flushSave() {
-  if (saveTimer) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
-  }
-  if (!isManual.value || !doc.value) return;
-  try {
-    await api.writeTextFile(ui.graphPath, JSON.stringify(doc.value, null, 2));
-  } catch (e) {
-    alert(`${t("gf.saveFail")}: ${e}`);
-  }
+function flushSave(): Promise<void> {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  if (!dirty || !docPath || !doc.value) return saveQueue;
+  const path = docPath;
+  const document = doc.value;
+  const content = JSON.stringify(document, null, 2);
+  dirty = false;
+  pendingWrites++;
+  saveQueue = saveQueue.then(async () => {
+    try { await api.writeTextFile(path, content); }
+    catch (e) {
+      graphError.value = `${t("gf.saveFail")}: ${e}`;
+      if (doc.value === document && docPath === path) dirty = true;
+    } finally { pendingWrites--; }
+  });
+  return saveQueue;
 }
 
 // ---------- 生命周期 ----------
@@ -821,48 +858,51 @@ function onGraphChanged(e: Event) {
   const path = (e as CustomEvent<string>).detail;
   refreshGraphs();
   // 外部修改且本地无未保存改动时静默重载
-  if (path === ui.graphPath && !saveTimer) loadDoc(true);
+  if (path === ui.graphPath && !dirty && !pendingWrites) loadDoc(true);
 }
 
-onMounted(async () => {
-  await refreshGraphs();
-  await loadDoc();
-  if (isManual.value && doc.value && (doc.value.nodes.length > 0 || doc.value.edges.length > 0)) {
-    editMode.value = false; // 打开时默认浏览，点「编辑」开始改
-  }
+onMounted(() => {
   render();
+  resizeObserver = new ResizeObserver(onResize);
+  if (container.value) resizeObserver.observe(container.value);
+  void refreshGraphs();
+  void loadDoc();
   window.addEventListener("resize", onResize);
   window.addEventListener("keydown", onEsc);
   window.addEventListener("emd-graph-changed", onGraphChanged);
-  // 主题切换后重绘
-  settings.$subscribe(() => render());
+  unsubscribeSettings = settings.$subscribe(() => render());
 });
 
 onBeforeUnmount(() => {
-  flushSave();
+  void flushSave();
+  disposed = true;
+  loadRevision++;
+  resizeObserver?.disconnect();
+  unsubscribeSettings?.();
   window.removeEventListener("resize", onResize);
   window.removeEventListener("keydown", onEsc);
   window.removeEventListener("emd-graph-changed", onGraphChanged);
-  try {
-    fg?._destructor?.();
-  } catch {
-    /* 已卸载 */
-  }
+  fg?._destructor?.();
   fg = null;
 });
 
-// 切换图谱 / 数据变化 → 重绘
-watch([currentData, showOrphans], () => render(), { deep: false });
+watch(currentData, () => render());
 watch(
   () => ui.graphPath,
-  async () => {
+  () => {
+    void flushSave();
     editMode.value = false;
     tool.value = "select";
     linkFrom.value = null;
     selectedId.value = null;
-    await loadDoc();
-    render();
+    nodeMenu.open = false;
+    nodeMenu.target = null;
+    dialog.mode = "none";
+    pendingAddPos = null;
+    graphError.value = "";
+    void loadDoc();
   },
+  { flush: "sync" },
 );
 </script>
 
@@ -956,6 +996,9 @@ watch(
   background: var(--background-modifier-border);
   flex-shrink: 0;
 }
+.gv-search { display: flex; align-items: center; gap: 4px; }
+.gv-search input { width: 130px; min-width: 0; }
+.gv-error { padding: 6px 14px; color: var(--text-error); }
 .gv-check {
   display: flex;
   align-items: center;

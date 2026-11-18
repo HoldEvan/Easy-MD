@@ -148,6 +148,11 @@
           <TemplatePane />
         </div>
 
+        <!-- 图片上传（全局） -->
+        <div v-else-if="tab === 'image-upload'" key="image-upload" class="st-pane">
+          <ImageUploadPane />
+        </div>
+
         <!-- AI -->
         <div v-else-if="tab === 'ai'" key="ai" class="st-pane">
           <AiPane />
@@ -182,6 +187,7 @@ import InputDialog from "../common/InputDialog.vue";
 import McpSettings from "./McpSettings.vue";
 import TemplatePane from "./TemplatePane.vue";
 import AiPane from "./AiPane.vue";
+import ImageUploadPane from "./ImageUploadPane.vue";
 import AboutPane from "./AboutPane.vue";
 import { useUiStore } from "../../stores/ui";
 import { useSettingsStore } from "../../stores/settings";
@@ -212,6 +218,7 @@ const fontScales = [
 const tabs = computed(() => [
   { key: "general", label: t("st.general") },
   { key: "templates", label: t("st.templates") },
+  { key: "image-upload", label: "图片上传" },
   { key: "ai", label: t("st.ai") },
   { key: "appearance", label: t("st.appearance") },
   { key: "mcp", label: t("st.mcp") },
@@ -288,11 +295,15 @@ async function addSnippet(name: string) {
 }
 .st-tabs {
   display: flex;
+  flex-shrink: 0;
+  overflow-x: auto;
   gap: 4px;
   padding: 10px 12px 0;
   border-bottom: 1px solid var(--background-modifier-border);
 }
 .st-tab {
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 6px 14px;
   border-radius: var(--radius-s);
   color: var(--text-muted);

@@ -13,27 +13,50 @@ export function isImageName(name: string): boolean {
   return IMAGE_EXT.some((e) => lower.endsWith("." + e));
 }
 
-/** 从索引镜像解析 [[目标]] → 笔记相对路径 */
-export function resolveTarget(target: string, notes: NoteIndex[]): ResolvedTarget {
-  const t = target.trim().replace(/\\/g, "/").toLowerCase();
-  if (!t) return { path: null, ambiguous: false };
-  if (t.includes("/")) {
-    for (const n of notes) {
-      const p = n.path.toLowerCase();
-      if (p === t || p === t + ".md") return { path: n.path, ambiguous: false };
+/** Resolve a note target without choosing an arbitrary duplicate filename. */
+export function resolveTarget(target: string, notes: NoteIndex[], sourcePath?: string): ResolvedTarget {
+  const missing: ResolvedTarget = { path: null, ambiguous: false };
+  let t = target.trim().replace(/\\/g, "/");
+  try { t = decodeURIComponent(t); } catch { /* Preserve literal malformed escapes. */ }
+  if (!t || t.includes(":") || t.startsWith("//")) return missing;
+  if (/\.(png|jpg|jpeg|gif|webp|svg|bmp|ico|avif|heic|tif|tiff|pdf|canvas|mp3|wav|ogg|m4a|flac|mp4|webm|mov|avi|mkv|zip|rar|7z|tar|gz|doc|docx|xls|xlsx|ppt|pptx)$/i.test(t)) return missing;
+  t = t.toLowerCase();
+  const directory = (path: string) => path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  const sourceDir = sourcePath === undefined ? undefined : directory(sourcePath.replace(/\\/g, "/").toLowerCase());
+  const normalize = (path: string): string | null => {
+    const parts: string[] = [];
+    for (const part of path.split("/")) {
+      if (!part || part === ".") continue;
+      if (part === "..") { if (!parts.length) return null; parts.pop(); }
+      else parts.push(part);
     }
-  }
-  // 目标带 .md 后缀时按去后缀比较，与 Obsidian 一致
-  const stem = t.endsWith(".md") ? t.slice(0, -3) : t;
-  const byTitle = notes.filter((n) => n.title.toLowerCase() === stem);
-  if (byTitle.length === 1) return { path: byTitle[0].path, ambiguous: false };
-  if (byTitle.length > 1) return { path: byTitle[0].path, ambiguous: true };
-  const byAlias = notes.filter((n) =>
-    n.aliases.some((a) => a.toLowerCase() === t),
-  );
-  if (byAlias.length === 1) return { path: byAlias[0].path, ambiguous: false };
-  if (byAlias.length > 1) return { path: byAlias[0].path, ambiguous: true };
-  return { path: null, ambiguous: false };
+    return parts.join("/");
+  };
+  const choose = (matches: NoteIndex[]): ResolvedTarget => ({
+    path: matches.length === 1 ? matches[0].path : null,
+    ambiguous: matches.length > 1,
+  });
+  const exact = (path: string | null) => path === null ? missing : choose(notes.filter(n => {
+    const p = n.path.toLowerCase();
+    return p === path || p === path + ".md" || p === path + ".markdown";
+  }));
+  const rooted = t.startsWith("/");
+  const relative = t.startsWith("./") || t.startsWith("../");
+  if (rooted) return exact(normalize(t));
+  if (sourceDir !== undefined) {
+    const local = exact(normalize(sourceDir ? `${sourceDir}/${t}` : t));
+    if (local.path || local.ambiguous || relative) return local;
+  } else if (relative) return missing;
+  const root = exact(normalize(t));
+  if (root.path || root.ambiguous || t.includes("/")) return root;
+  const preferLocal = (matches: NoteIndex[]) => {
+    const local = sourceDir === undefined ? [] : matches.filter(n => directory(n.path.toLowerCase()) === sourceDir);
+    return choose(local.length ? local : matches);
+  };
+  const stem = t.replace(/\.(md|markdown)$/i, "");
+  const names = notes.filter(n => n.path.split("/").pop()!.replace(/\.(md|markdown)$/i, "").toLowerCase() === stem);
+  if (names.length) return preferLocal(names);
+  return preferLocal(notes.filter(n => n.aliases.some(a => a.toLowerCase() === t)));
 }
 
 /** 图片资源目标 → 相对路径（有路径用路径，无路径拼附件目录） */

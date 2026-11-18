@@ -105,7 +105,8 @@ fn handle_batch(app: &AppHandle, root: &std::path::Path, paths: HashSet<PathBuf>
                 .unwrap_or(&full)
                 .to_string_lossy()
                 .replace('\\', "/");
-            let is_md = rel.to_lowercase().ends_with(".md");
+            let lower = rel.to_lowercase();
+            let is_md = lower.ends_with(".md") || lower.ends_with(".markdown");
             let is_canvas = rel.to_lowercase().ends_with(".canvas");
             let is_graph = rel.to_lowercase().ends_with(".graph");
             if !is_md && !is_canvas && !is_graph {

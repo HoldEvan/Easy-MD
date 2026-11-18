@@ -5,6 +5,7 @@
       <span class="jot-title">{{ title }}</span>
       <span v-if="editor.isDirty" class="jot-dirty" />
       <div class="jot-spacer" />
+      <button class="jot-btn" @click="images.choose"><Icon name="image" :size="12" />插入图片</button>
       <button class="jot-btn" :title="t('ed.tag')" @pointerdown.stop @click="tagOpen = !tagOpen">
         <Icon name="tag" :size="12" />
         {{ t("ed.tagTxt") }}
@@ -31,6 +32,8 @@
       </div>
     </DropdownMenu>
 
+    <ImageUploadQueue :jobs="images.jobs" :notice="images.notice.value" :busy="images.busy.value" @retry="images.retry" @local="images.retry($event, true)" @cancel="images.cancel" @dismiss="images.notice.value = ''" />
+
     <!-- 纯文本编辑区 -->
     <textarea
       ref="textareaRef"
@@ -38,7 +41,9 @@
       class="jot-textarea"
       :placeholder="t('jot.placeholder')"
       @input="onInput"
-      @paste="onPaste"
+      @paste="images.paste"
+      @drop.prevent="images.drop"
+      @dragover="images.dragOver"
     />
   </div>
 </template>
@@ -50,7 +55,8 @@ import DropdownMenu from "../common/DropdownMenu.vue";
 import { useEditorStore } from "../../stores/editor";
 import { useUiStore } from "../../stores/ui";
 import { useNotesIndexStore } from "../../stores/notesIndex";
-import { api } from "../../ipc/tauri";
+import ImageUploadQueue from "../editor/ImageUploadQueue.vue";
+import { useImageInsertion } from "../../composables/useImageInsertion";
 import { addTagToContent } from "../../lib/tags";
 import { t } from "../../i18n";
 
@@ -59,6 +65,7 @@ const ui = useUiStore();
 const indexStore = useNotesIndexStore();
 const textareaRef = ref<HTMLTextAreaElement>();
 const content = ref("");
+const images = useImageInsertion(textareaRef, insertAtCursor);
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let syncing = false;
 
@@ -97,26 +104,6 @@ watch(
     if (!syncing && c !== content.value) content.value = c;
   },
 );
-
-/** 粘贴图片 → 存 assets → 插入 ![](<路径>)（<> 包裹以兼容带空格文件名） */
-async function onPaste(e: ClipboardEvent) {
-  const items = e.clipboardData?.items;
-  if (!items) return;
-  for (const item of Array.from(items)) {
-    if (item.type.startsWith("image/")) {
-      e.preventDefault();
-      const file = item.getAsFile();
-      if (!file) continue;
-      const ext = (file.name.split(".").pop() || "png").toLowerCase();
-      try {
-        const buf = await file.arrayBuffer();
-        const rel = await api.saveImage(Array.from(new Uint8Array(buf)), ext);
-        insertAtCursor(`![](<${rel}>)\n`);
-      } catch { /* 忽略 */ }
-      return;
-    }
-  }
-}
 
 function insertAtCursor(text: string) {
   const ta = textareaRef.value;

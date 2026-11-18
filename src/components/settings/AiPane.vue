@@ -22,7 +22,11 @@
     <div class="st-row">
       <label>{{ t("ai.model") }}</label>
       <input v-model="settings.data.ai_model" type="text" :placeholder="modelPlaceholder" @change="persist" />
+      <button ref="modelButton" class="emd-btn" :disabled="loadingModels" @click="fetchModels">{{ loadingModels ? '正在检索…' : '检索模型' }}</button>
     </div>
+    <DropdownMenu max-height="min(360px, calc(100vh - 32px))" :open="modelsOpen" :anchor="modelButton" :items="modelItems" title="选择模型" align="right" @select="selectModel" @close="modelsOpen = false" />
+    <p v-if="modelError" class="ai-error" role="alert">{{ modelError }}</p>
+    <p v-if="modelStatus" class="st-tip" role="status">{{ modelStatus }}</p>
     <div class="st-row st-actions-row">
       <label>{{ t("ai.conn") }}</label>
       <button class="emd-btn" :disabled="testing" @click="test">
@@ -39,8 +43,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onUnmounted, ref, watch } from "vue";
 import Icon from "../common/Icon.vue";
+import DropdownMenu from "../common/DropdownMenu.vue";
 import { useSettingsStore } from "../../stores/settings";
 import { api } from "../../ipc/tauri";
 import { t } from "../../i18n";
@@ -48,6 +53,51 @@ import { t } from "../../i18n";
 const settings = useSettingsStore();
 const testing = ref(false);
 const testOk = ref(false);
+const models = ref<string[]>([]);
+const modelsOpen = ref(false);
+const modelButton = ref<HTMLElement>();
+const loadingModels = ref(false);
+const modelError = ref("");
+const modelStatus = ref("");
+let modelRequest = 0;
+const modelItems = computed(() => models.value.map(model => ({ key: model, label: model, hint: model === settings.data.ai_model ? "当前" : undefined })));
+
+watch(() => [settings.data.ai_provider, settings.data.ai_base_url, settings.data.ai_api_key], () => {
+  modelRequest++;
+  models.value = [];
+  modelsOpen.value = false;
+  loadingModels.value = false;
+  modelError.value = "";
+  modelStatus.value = "";
+  testOk.value = false;
+}, { flush: "sync" });
+onUnmounted(() => { modelRequest++; });
+
+async function fetchModels() {
+  const request = ++modelRequest;
+  loadingModels.value = true;
+  modelError.value = "";
+  modelStatus.value = "";
+  try {
+    const result = await api.aiListModels(settings.data.ai_provider, settings.data.ai_base_url, settings.data.ai_api_key);
+    if (request !== modelRequest) return;
+    models.value = result;
+    modelsOpen.value = result.length > 0;
+    modelStatus.value = result.length ? "" : "服务未返回可用模型，可以手动填写模型名称。";
+  } catch (error) {
+    if (request === modelRequest) modelError.value = `模型检索失败：${String(error)}。也可以手动填写模型名称。`;
+  } finally {
+    if (request === modelRequest) loadingModels.value = false;
+  }
+}
+
+async function selectModel(model: string) {
+  modelsOpen.value = false;
+  settings.data.ai_model = model;
+  testOk.value = false;
+  try { await persist(); }
+  catch { modelError.value = "模型已选择，但保存设置失败，请重试。"; }
+}
 
 const modelPlaceholder = computed(() =>
   settings.data.ai_provider === "anthropic" ? "claude-sonnet-4-20250514" : "gpt-4o-mini",
@@ -100,7 +150,9 @@ async function test() {
 }
 .ai-pane input {
   flex: 1;
+  min-width: 0;
 }
+.ai-error { color: var(--text-error); font-size: var(--font-ui-smaller); overflow-wrap: anywhere; padding-top: 8px; }
 .ai-seg {
   display: flex;
   background: var(--interactive-normal);

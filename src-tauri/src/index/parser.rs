@@ -2,6 +2,7 @@
 //! 只读不写：解析结果供索引层使用，绝不改动原始文本。
 
 use super::model::{BlockId, Heading, NoteLink};
+use pulldown_cmark::{Event, LinkType, Parser, Tag, TagEnd};
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -106,29 +107,99 @@ pub fn parse_note(text: &str) -> ParsedNote {
         }
     }
 
-    // ---- wikilinks（在原始正文上提取，保证 raw 完整）----
-    for cap in RE_WIKILINK.captures_iter(body) {
+    // Offset ranges retain the original spelling and zero-based source lines.
+    let mut masked = body.as_bytes().to_vec();
+    let mut links = Vec::new();
+    let mut current_link: Option<(usize, usize, String, String)> = None;
+    let mut image_depth = 0usize;
+    for (event, range) in Parser::new(body).into_offset_iter() {
+        match event {
+            Event::Start(Tag::CodeBlock(_)) | Event::Code(_) => {
+                mask_range(&mut masked, range.start, range.end);
+            }
+            Event::Start(Tag::Image { .. }) => {
+                image_depth += 1;
+                mask_range(&mut masked, range.start, range.end);
+            }
+            Event::End(TagEnd::Image) => image_depth = image_depth.saturating_sub(1),
+            Event::Start(Tag::Link {
+                dest_url,
+                link_type,
+                ..
+            }) if image_depth == 0 => {
+                // pulldown-cmark omits the trailing [] in collapsed-reference ranges.
+                let end = if link_type == LinkType::Collapsed && body[range.end..].starts_with("[]")
+                {
+                    range.end + 2
+                } else {
+                    range.end
+                };
+                mask_range(&mut masked, range.start, end);
+                current_link = Some((range.start, end, dest_url.to_string(), String::new()));
+            }
+            Event::Text(text) if image_depth == 0 => {
+                if let Some((_, _, _, label)) = &mut current_link {
+                    label.push_str(&text);
+                }
+            }
+            Event::End(TagEnd::Link) => {
+                if let Some((start, end, destination, label)) = current_link.take() {
+                    if let Some((target, subpath)) = note_destination(&destination) {
+                        links.push((
+                            start,
+                            NoteLink {
+                                raw: body[start..end].to_string(),
+                                target,
+                                subpath,
+                                alias: Some(label),
+                                embed: false,
+                                line: line_of(body, start) + body_start_line,
+                            },
+                        ));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    // HTML block events can include text after -->; mask only the comment itself.
+    let mut cursor = 0;
+    while let Some(start) = masked[cursor..].windows(4).position(|w| w == b"<!--") {
+        let start = cursor + start;
+        let end = masked[start + 4..]
+            .windows(3)
+            .position(|w| w == b"-->")
+            .map_or(masked.len(), |end| start + 4 + end + 3);
+        mask_range(&mut masked, start, end);
+        cursor = end;
+    }
+    let visible = String::from_utf8(masked).expect("mask preserves UTF-8");
+    for cap in RE_WIKILINK.captures_iter(&visible) {
         let whole = cap.get(0).unwrap();
-        let embed = &cap[1] == "!";
+        if is_escaped(body, whole.start()) {
+            continue;
+        }
         let inner = cap[2].trim();
-        let (target_part, alias) = match inner.split_once('|') {
+        let (destination, alias) = match inner.split_once('|') {
             Some((t, a)) => (t.trim(), Some(a.trim().to_string())),
             None => (inner, None),
         };
-        let (target, subpath) = match target_part.split_once('#') {
-            Some((t, s)) if !s.is_empty() => (t.trim().to_string(), Some(s.to_string())),
-            Some((t, _)) => (t.trim().to_string(), None),
-            None => (target_part.to_string(), None),
-        };
-        out.links.push(NoteLink {
-            raw: whole.as_str().to_string(),
-            target,
-            subpath,
-            alias,
-            embed,
-            line: line_of(body, whole.start()) + body_start_line,
-        });
+        if let Some((target, subpath)) = note_destination(destination) {
+            links.push((
+                whole.start(),
+                NoteLink {
+                    raw: body[whole.range()].to_string(),
+                    target,
+                    subpath,
+                    alias,
+                    embed: &cap[1] == "!",
+                    line: line_of(body, whole.start()) + body_start_line,
+                },
+            ));
+        }
     }
+    links.sort_by_key(|(offset, _)| *offset);
+    out.links = links.into_iter().map(|(_, link)| link).collect();
 
     // ---- 标题 ----
     for cap in RE_HEADING.captures_iter(body) {
@@ -201,6 +272,93 @@ fn mask_code_and_links(body: &str) -> String {
     s
 }
 
+fn mask_range(bytes: &mut [u8], start: usize, end: usize) {
+    for byte in &mut bytes[start..end] {
+        if *byte != b'\n' && *byte != b'\r' {
+            *byte = b' ';
+        }
+    }
+}
+
+fn is_escaped(text: &str, offset: usize) -> bool {
+    text.as_bytes()[..offset]
+        .iter()
+        .rev()
+        .take_while(|&&b| b == b'\\')
+        .count()
+        % 2
+        == 1
+}
+
+/// Keep target URL escapes until resolution, so encoded '#' remains a filename character.
+fn note_destination(destination: &str) -> Option<(String, Option<String>)> {
+    let destination = destination.trim();
+    let (path, fragment) = destination.split_once('#').unwrap_or((destination, ""));
+    let path = path.split_once('?').map_or(path, |(path, _)| path).trim();
+    if !is_note_target(path) {
+        return None;
+    }
+    let subpath = (!fragment.is_empty()).then(|| {
+        percent_encoding::percent_decode_str(fragment)
+            .decode_utf8_lossy()
+            .into_owned()
+    });
+    Some((path.to_string(), subpath))
+}
+
+pub(super) fn is_note_target(target: &str) -> bool {
+    let decoded = percent_encoding::percent_decode_str(target).decode_utf8_lossy();
+    let path = decoded.trim().replace('\\', "/");
+    if path.starts_with("//") || path.contains(':') {
+        return false;
+    }
+    let extension = path
+        .rsplit('/')
+        .next()
+        .unwrap_or("")
+        .rsplit_once('.')
+        .map(|(_, extension)| extension.to_ascii_lowercase())
+        .unwrap_or_default();
+    !matches!(
+        extension.as_str(),
+        "png"
+            | "jpg"
+            | "jpeg"
+            | "gif"
+            | "webp"
+            | "svg"
+            | "bmp"
+            | "ico"
+            | "avif"
+            | "heic"
+            | "tif"
+            | "tiff"
+            | "pdf"
+            | "canvas"
+            | "mp3"
+            | "wav"
+            | "ogg"
+            | "m4a"
+            | "flac"
+            | "mp4"
+            | "webm"
+            | "mov"
+            | "avi"
+            | "mkv"
+            | "zip"
+            | "rar"
+            | "7z"
+            | "tar"
+            | "gz"
+            | "doc"
+            | "docx"
+            | "xls"
+            | "xlsx"
+            | "ppt"
+            | "pptx"
+    )
+}
+
 /// 判断是否应该跳过（体积过大）
 pub fn too_large(size: u64) -> bool {
     size > MAX_PARSE_SIZE
@@ -235,15 +393,14 @@ mod tests {
         let text =
             "# t\n[[Note A]] [[B|别名]] [[C#标题]] [[D#^abc1]] ![[E]] ![[img.png]] [[#同文件标题]]";
         let p = parse_note(text);
-        assert_eq!(p.links.len(), 7);
+        assert_eq!(p.links.len(), 6);
         assert_eq!(p.links[0].target, "Note A");
         assert!(!p.links[0].embed);
         assert_eq!(p.links[1].alias.as_deref(), Some("别名"));
         assert_eq!(p.links[2].subpath.as_deref(), Some("标题"));
         assert_eq!(p.links[3].subpath.as_deref(), Some("^abc1"));
         assert!(p.links[4].embed);
-        assert_eq!(p.links[5].embed, true);
-        assert_eq!(p.links[6].target, "");
+        assert_eq!(p.links[5].target, "");
     }
 
     #[test]
@@ -266,6 +423,47 @@ mod tests {
         assert_eq!(p.headings[0].text, "一");
         assert_eq!(p.headings[0].line, 3);
         assert_eq!(p.block_ids[0].id, "blk01");
+    }
+
+    #[test]
+    fn markdown_links_preserve_metadata_and_exclude_non_notes() {
+        let text = "---\ntitle: test\n---\n[标签](../Note%20A.md#标题)\n[引用][id]\n\n[id]: /Notes/B.markdown \"title\"\n![图片](picture.md) [网站](https://example.com) [邮件](mailto:a@b.com)\n[[photo.PNG]] ![[report.pdf]] [[board.canvas]] ![[Note]]";
+        let p = parse_note(text);
+        assert_eq!(p.links.len(), 3, "{:?}", p.links);
+        assert_eq!(p.links[0].raw, "[标签](../Note%20A.md#标题)");
+        assert_eq!(p.links[0].line, 3);
+        assert_eq!(p.links[0].target, "../Note%20A.md");
+        assert_eq!(p.links[0].subpath.as_deref(), Some("标题"));
+        assert_eq!(p.links[0].alias.as_deref(), Some("标签"));
+        assert_eq!(p.links[1].raw, "[引用][id]");
+        assert_eq!(p.links[1].target, "/Notes/B.markdown");
+        assert!(p.links[2].embed);
+    }
+
+    #[test]
+    fn links_ignore_code_comments_and_images() {
+        let text = "[[yes]]\n\n    [[indented]] [no](bad.md)\n\n```md\n[[fenced]]\n```\n~~~\n[no](bad.md)\n~~~\n`[[inline]]` ``x ` [[inline2]]``\n<!-- [[comment]]\n[no](bad.md) -->\n![label [[image]]](image.png)\n\\[[escaped]]\n[[last]]";
+        let p = parse_note(text);
+        assert_eq!(
+            p.links
+                .iter()
+                .map(|l| l.target.as_str())
+                .collect::<Vec<_>>(),
+            vec!["yes", "last"]
+        );
+        assert_eq!(p.links[1].line, 15);
+    }
+
+    #[test]
+    fn reference_forms_and_multiline_code_are_supported() {
+        let text = "[full][id] [id][] [id] [nested](folder/a(b).md)\n\n[id]: <note%2520name.md>\n\n`` code\n[[hidden]]\n``\n<!-- inline [[hidden]] --> [[shown]]";
+        let p = parse_note(text);
+        assert_eq!(p.links.len(), 5, "{:?}", p.links);
+        assert_eq!(p.links[0].target, "note%2520name.md");
+        assert_eq!(p.links[1].raw, "[id][]");
+        assert_eq!(p.links[2].raw, "[id]");
+        assert_eq!(p.links[3].target, "folder/a(b).md");
+        assert_eq!(p.links[4].target, "shown");
     }
 
     #[test]

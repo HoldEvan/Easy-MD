@@ -29,7 +29,18 @@ const { htmlImages } = await import(`data:text/javascript;base64,${Buffer.from(i
 const kbdSource = await readFile(new URL('../src/share/kbd.ts', import.meta.url), 'utf8');
 const kbdCode = await transform(kbdSource, { loader: 'ts', format: 'esm' });
 const { keyboardLabels } = await import(`data:text/javascript;base64,${Buffer.from(kbdCode.code).toString('base64')}`);
-const md = new MarkdownIt({ html: false }).use(centerContainers).use(codeBlockControls).use(htmlImages).use(keyboardLabels);
+const wikiSource = await readFile(new URL('../src/share/wikiLinks.ts', import.meta.url), 'utf8');
+const wikiCode = await transform(wikiSource, { loader: 'ts', format: 'esm' });
+const { wikiLinks, resolveWikiNote } = await import(`data:text/javascript;base64,${Buffer.from(wikiCode.code).toString('base64')}`);
+const md = new MarkdownIt({ html: false }).use(centerContainers).use(codeBlockControls).use(htmlImages).use(keyboardLabels).use(wikiLinks);
+const wikiEnv = { notePaths: ['目录/笔记.md', 'Other.md'] };
+assert.equal(resolveWikiNote('笔记', wikiEnv.notePaths), '目录/笔记.md');
+assert.equal(resolveWikiNote('目录/笔记.md', wikiEnv.notePaths), '目录/笔记.md');
+assert.match(md.render('[[笔记|别名]]', wikiEnv), /href="#%E7%9B%AE%E5%BD%95%2F%E7%AC%94%E8%AE%B0.md">别名<\/a>/);
+assert.match(md.render('[[other]]', wikiEnv), /href="#Other.md"/);
+assert.match(md.render('[[不存在|缺失]]', wikiEnv), /<span class="wiki-unresolved"[^>]*>缺失<\/span>/);
+assert.match(md.render('[[笔记|<script>]]', wikiEnv), /&lt;script&gt;/);
+for (const literal of ['`[[笔记|别名]]`', '```\n[[笔记|别名]]\n```', '<!-- [[笔记|别名]] -->']) assert.doesNotMatch(md.render(literal, wikiEnv), /class="vault-link"/);
 assert.match(md.render('<kbd>Ctrl</kbd>+<kbd>F5</kbd>'), /<kbd>Ctrl<\/kbd>\+<kbd>F5<\/kbd>/);
 assert.match(md.render('<kbd>&lt; &amp; &gt;</kbd>'), /<kbd>&lt; &amp; &gt;<\/kbd>/);
 for (const literal of ['`<kbd>Ctrl</kbd>`', '```html\n<kbd>Ctrl</kbd>\n```', '<!-- <kbd>Ctrl</kbd> -->', '<kbd onclick="alert(1)">Ctrl</kbd>']) {

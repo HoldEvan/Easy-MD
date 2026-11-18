@@ -4,6 +4,7 @@ import { taskListPlugin } from '../lib/markdown/taskList';
 import { centerContainers } from './center';
 import { htmlImages } from './images';
 import { keyboardLabels } from './kbd';
+import { wikiLinks } from './wikiLinks';
 import { codeBlockControls } from './codeBlocks';
 import { copyWithFeedback } from '../lib/markdown/copyFeedback';
 import { decodeURIComponentSafe, encodedPath, resolveVaultPath, safeHref, stripFrontmatter } from './utils';
@@ -19,6 +20,7 @@ md.validateLink = (url: string) => safeHref(url) !== null;
 md.use(centerContainers);
 md.use(htmlImages);
 md.use(keyboardLabels);
+md.use(wikiLinks);
 taskListPlugin(md);
 codeBlockControls(md);
 md.renderer.rules.image = (tokens, idx, options, env, renderer) => {
@@ -174,7 +176,7 @@ async function renderFile(entry: Entry): Promise<void> {
     if (entry.kind === 'markdown') {
       const response = await fetch(fileUrl(entry.path)); if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const source = await response.text();
-      const html = md.render(stripFrontmatter(source), { path: entry.path });
+      const html = md.render(stripFrontmatter(source), { path: entry.path, notePaths: (app.catalog?.entries || []).filter(item => item.kind === 'markdown').map(item => item.path) });
       body.innerHTML = html;
       await renderMermaidBlocks(body);
       body.querySelectorAll<HTMLButtonElement>('.code-copy').forEach((button) => {

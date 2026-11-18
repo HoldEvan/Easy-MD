@@ -4,6 +4,7 @@
 mod commands;
 mod config;
 mod index;
+mod image_upload;
 mod mcp;
 mod share;
 mod state;
@@ -77,6 +78,10 @@ pub fn run() {
             commands::index_cmd::get_tags,
             commands::index_cmd::get_backlinks,
             commands::index_cmd::resolve_link,
+            image_upload::image_upload_get_config,
+            image_upload::image_upload_save_config,
+            image_upload::image_upload,
+            image_upload::image_upload_test,
             commands::settings::get_settings,
             commands::settings::save_settings,
             commands::settings::get_config_dirs,
@@ -102,6 +107,7 @@ pub fn run() {
             commands::fsops::duplicate_file,
             commands::fsops::delete_files,
             commands::ai::ai_chat,
+            commands::ai::ai_list_models,
             share::share_status,
             share::share_start,
             share::share_stop,
