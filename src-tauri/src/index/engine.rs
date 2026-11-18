@@ -26,7 +26,10 @@ struct CacheFile {
 /// 跳过隐藏目录 / node_modules
 fn is_skipped_entry(name: &std::ffi::OsStr) -> bool {
     let s = name.to_string_lossy();
-    s.starts_with('.') || s == "node_modules" || s == "$RECYCLE.BIN" || s == "System Volume Information"
+    s.starts_with('.')
+        || s == "node_modules"
+        || s == "$RECYCLE.BIN"
+        || s == "System Volume Information"
 }
 
 fn rel_path(root: &Path, full: &Path) -> String {
@@ -49,9 +52,7 @@ impl IndexEngine {
         let mut engine = IndexEngine::default();
         for entry in walkdir::WalkDir::new(root)
             .into_iter()
-            .filter_entry(|e| {
-                e.depth() == 0 || !is_skipped_entry(e.file_name())
-            })
+            .filter_entry(|e| e.depth() == 0 || !is_skipped_entry(e.file_name()))
         {
             let entry = match entry {
                 Ok(e) => e,
@@ -60,7 +61,12 @@ impl IndexEngine {
             if !entry.file_type().is_file() {
                 continue;
             }
-            if entry.path().extension().map(|e| e.eq_ignore_ascii_case("md")).unwrap_or(false) {
+            if entry
+                .path()
+                .extension()
+                .map(|e| e.eq_ignore_ascii_case("md"))
+                .unwrap_or(false)
+            {
                 let rel = rel_path(root, entry.path());
                 if let Some(note) = parse_file(root, &rel) {
                     engine.notes.insert(rel, note);
@@ -84,15 +90,21 @@ impl IndexEngine {
             if !entry.file_type().is_file() {
                 continue;
             }
-            if entry.path().extension().map(|e| e.eq_ignore_ascii_case("md")).unwrap_or(false) {
+            if entry
+                .path()
+                .extension()
+                .map(|e| e.eq_ignore_ascii_case("md"))
+                .unwrap_or(false)
+            {
                 let rel = rel_path(root, entry.path());
                 disk_files.insert(rel.clone());
                 let need_parse = match self.notes.get(&rel) {
                     Some(cached) => {
                         let meta = std::fs::metadata(entry.path());
                         match meta {
-                            Ok(m) => m.len() != cached.size
-                                || mtime_of(&m).unwrap_or(0) != cached.mtime,
+                            Ok(m) => {
+                                m.len() != cached.size || mtime_of(&m).unwrap_or(0) != cached.mtime
+                            }
                             Err(_) => true,
                         }
                     }
@@ -155,26 +167,34 @@ impl IndexEngine {
     pub fn cache_path(config_dir: &Path, vault_root: &Path) -> std::path::PathBuf {
         let key = Sha256::digest(vault_root.to_string_lossy().as_bytes());
         let hex: String = key.iter().map(|b| format!("{:02x}", b)).collect();
-        config_dir.join("cache").join("index").join(format!("{}.json", hex))
+        config_dir
+            .join("cache")
+            .join("index")
+            .join(format!("{}.json", hex))
     }
 
     /// 解析链接目标：文件名（含路径）→ 别名，同名多个时 ambiguous
     pub fn resolve(&self, target: &str) -> ResolveResult {
         let t = target.trim();
         if t.is_empty() {
-            return ResolveResult { path: None, ambiguous: false };
+            return ResolveResult {
+                path: None,
+                ambiguous: false,
+            };
         }
         let t_norm = t.replace('\\', "/");
         let t_lower = t_norm.to_lowercase();
 
         // 1) 带路径的精确匹配：目标本身 或 目标.md
         if t_norm.contains('/') {
-            let direct = self
-                .notes
-                .keys()
-                .find(|k| k.to_lowercase() == t_lower || k.to_lowercase() == format!("{}.md", t_lower));
+            let direct = self.notes.keys().find(|k| {
+                k.to_lowercase() == t_lower || k.to_lowercase() == format!("{}.md", t_lower)
+            });
             if let Some(p) = direct {
-                return ResolveResult { path: Some(p.clone()), ambiguous: false };
+                return ResolveResult {
+                    path: Some(p.clone()),
+                    ambiguous: false,
+                };
             }
         }
 
@@ -186,10 +206,16 @@ impl IndexEngine {
             .filter(|k| file_stem_of(k).to_lowercase() == stem_lower)
             .collect();
         if by_title.len() == 1 {
-            return ResolveResult { path: Some(by_title[0].clone()), ambiguous: false };
+            return ResolveResult {
+                path: Some(by_title[0].clone()),
+                ambiguous: false,
+            };
         }
         if by_title.len() > 1 {
-            return ResolveResult { path: Some(by_title[0].clone()), ambiguous: true };
+            return ResolveResult {
+                path: Some(by_title[0].clone()),
+                ambiguous: true,
+            };
         }
 
         // 3) 别名匹配
@@ -200,13 +226,22 @@ impl IndexEngine {
             .map(|(k, _)| k)
             .collect();
         if by_alias.len() == 1 {
-            return ResolveResult { path: Some(by_alias[0].clone()), ambiguous: false };
+            return ResolveResult {
+                path: Some(by_alias[0].clone()),
+                ambiguous: false,
+            };
         }
         if by_alias.len() > 1 {
-            return ResolveResult { path: Some(by_alias[0].clone()), ambiguous: true };
+            return ResolveResult {
+                path: Some(by_alias[0].clone()),
+                ambiguous: true,
+            };
         }
 
-        ResolveResult { path: None, ambiguous: false }
+        ResolveResult {
+            path: None,
+            ambiguous: false,
+        }
     }
 
     /// 反向链接：引用了 note_path 的所有其它笔记
@@ -268,7 +303,11 @@ impl IndexEngine {
 
 pub fn mtime_of(meta: &std::fs::Metadata) -> Result<u64> {
     use std::time::UNIX_EPOCH;
-    Ok(meta.modified().context("无修改时间")?.duration_since(UNIX_EPOCH)?.as_secs())
+    Ok(meta
+        .modified()
+        .context("无修改时间")?
+        .duration_since(UNIX_EPOCH)?
+        .as_secs())
 }
 
 /// 读取并解析单个 md 文件
@@ -352,7 +391,13 @@ mod tests {
         write(&dir, "m.md", "#x/y");
         let engine = IndexEngine::scan(&dir).unwrap();
         let counts = engine.tag_counts();
-        let get = |t: &str| counts.iter().find(|c| c.tag == t).map(|c| c.count).unwrap_or(0);
+        let get = |t: &str| {
+            counts
+                .iter()
+                .find(|c| c.tag == t)
+                .map(|c| c.count)
+                .unwrap_or(0)
+        };
         assert_eq!(get("x"), 2);
         assert_eq!(get("x/y"), 2);
         assert_eq!(get("z"), 1);
@@ -377,7 +422,11 @@ mod tests {
     #[test]
     fn backlinks_cjk_and_spaced_filenames() {
         let dir = std::env::temp_dir().join(format!("emd_test_{}", uuid::Uuid::new_v4()));
-        write(&dir, "日记.md", "[[Test]] [[0. 新建笔记]] [[Test 2]] [[dail]] [[dddd]]");
+        write(
+            &dir,
+            "日记.md",
+            "[[Test]] [[0. 新建笔记]] [[Test 2]] [[dail]] [[dddd]]",
+        );
         write(&dir, "Test.md", "内容");
         write(&dir, "Test 2.md", "内容");
         write(&dir, "dail.md", "内容");
@@ -386,7 +435,12 @@ mod tests {
         let engine = IndexEngine::scan(&dir).unwrap();
 
         let bl = engine.backlinks("Test.md");
-        assert_eq!(bl.len(), 2, "Test 应被 日记 和 dddd 引用: {:?}", bl.iter().map(|b| &b.source).collect::<Vec<_>>());
+        assert_eq!(
+            bl.len(),
+            2,
+            "Test 应被 日记 和 dddd 引用: {:?}",
+            bl.iter().map(|b| &b.source).collect::<Vec<_>>()
+        );
         assert_eq!(engine.backlinks("dddd.md").len(), 1);
         assert_eq!(engine.backlinks("Test 2.md").len(), 1);
         assert_eq!(engine.backlinks("dail.md").len(), 1);

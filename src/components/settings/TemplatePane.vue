@@ -1,7 +1,7 @@
 <template>
   <div class="tpl-pane">
     <div class="tpl-toolbar">
-      <button class="emd-btn emd-btn-accent" @click="createTpl">
+      <button class="emd-btn emd-btn-accent" @click="creating = true">
         <Icon name="plus" :size="13" /> {{ t("tp2.create") }}
       </button>
       <button class="emd-btn" @click="refresh">
@@ -26,6 +26,14 @@
       </div>
     </div>
 
+    <InputDialog
+      v-if="creating"
+      :title="t('tp2.create')"
+      :placeholder="t('tp2.namePh')"
+      @confirm="createTpl"
+      @cancel="creating = false"
+    />
+
     <!-- 编辑弹窗 -->
     <transition name="emd-fade">
       <div v-if="editing" class="emd-modal-bg" @click.self="editing = null">
@@ -49,6 +57,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import Icon from "../common/Icon.vue";
+import InputDialog from "../common/InputDialog.vue";
 import { api } from "../../ipc/tauri";
 import { useSettingsStore } from "../../stores/settings";
 import { useVaultStore } from "../../stores/vault";
@@ -60,6 +69,7 @@ const vault = useVaultStore();
 const templates = ref<TemplateFile[]>([]);
 const editing = ref<TemplateFile | null>(null);
 const editingContent = ref("");
+const creating = ref(false);
 
 const dir = () => (settings.data.templates_dir || "templates").replace(/^\/+|\/+$/g, "");
 const dirLabel = computed(() => dir());
@@ -70,15 +80,21 @@ async function refresh() {
 }
 onMounted(refresh);
 
-async function createTpl() {
-  const name = prompt(t("tp2.namePh"));
-  if (!name) return;
-  const rel = await api.createNote(dir(), name.trim(), "");
-  await vault.refreshParents(rel);
-  await refresh();
-  // 创建后直接进入编辑
-  const created = templates.value.find((x) => x.path === rel);
-  if (created) editTpl(created);
+function createTpl(name: string) {
+  creating.value = false;
+  void createTemplate(name);
+}
+
+async function createTemplate(name: string) {
+  try {
+    const rel = await api.createNote(dir(), name, "");
+    await vault.refreshParents(rel);
+    await refresh();
+    const created = templates.value.find((x) => x.path === rel);
+    if (created) editTpl(created);
+  } catch (e) {
+    alert(String(e));
+  }
 }
 
 function editTpl(tp: TemplateFile) {

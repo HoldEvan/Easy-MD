@@ -29,6 +29,11 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 anyhow = "1"
 percent-encoding = "2"
+url = "2"
+tiny_http = "0.12"
+base64 = "0.22"
+if-addrs = "0.13"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 encoding_rs = "0.8"
 reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], default-features = false }
 

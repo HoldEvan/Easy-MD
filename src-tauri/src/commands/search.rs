@@ -19,7 +19,10 @@ pub struct ContentHit {
     pub text: String,
 }
 
-fn with_engine<T>(state: &State<'_, AppState>, f: impl FnOnce(&crate::index::engine::IndexEngine, &PathBuf) -> Result<T, String>) -> Result<T, String> {
+fn with_engine<T>(
+    state: &State<'_, AppState>,
+    f: impl FnOnce(&crate::index::engine::IndexEngine, &PathBuf) -> Result<T, String>,
+) -> Result<T, String> {
     let guard = state.vault.lock().map_err(|e| e.to_string())?;
     match guard.as_ref() {
         Some(vc) => f(&vc.engine, &vc.root),
@@ -79,11 +82,15 @@ pub fn search_content(
         let mut hits: Vec<ContentHit> = Vec::new();
         'outer: for note in engine.notes.values() {
             let full = root.join(&note.path);
-            let Ok(meta) = std::fs::metadata(&full) else { continue };
+            let Ok(meta) = std::fs::metadata(&full) else {
+                continue;
+            };
             if meta.len() > 2 * 1024 * 1024 {
                 continue;
             }
-            let Ok(text) = std::fs::read_to_string(&full) else { continue };
+            let Ok(text) = std::fs::read_to_string(&full) else {
+                continue;
+            };
             for (i, line) in text.lines().enumerate() {
                 if line.to_lowercase().contains(&q) {
                     let trimmed = line.trim();

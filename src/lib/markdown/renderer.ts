@@ -15,7 +15,10 @@ export interface RenderOpts {
 
 // html:true 让论坛/网页复制来的原生 <img> 等 HTML 片段正常渲染
 // （VSCode/Obsidian 同为 true）；script 仍被 CSP script-src 'self' 阻断
+import { taskListPlugin } from "./taskList";
+
 const md: MarkdownIt = new MarkdownIt({ html: true, linkify: true, breaks: false });
+taskListPlugin(md);
 
 // markdown-it 默认把 file: / data: 也当危险协议拒绝解析（链接/图片都不出），
 // 本地知识库需要 file:// 与 base64 图片；脚本安全由 CSP script-src 'self' 把关
@@ -287,20 +290,24 @@ md.renderer.renderToken = function (tokens, idx, options) {
   return renderTokenOrig.call(this, tokens, idx, options);
 };
 
-// 代码围栏有自带渲染规则（忽略 attrs），包一层把锚点注入 <pre>
+// 代码围栏有自带渲染规则（忽略 attrs），包一层加入工具栏和源行锚点
 const fenceOrig = md.renderer.rules.fence;
+function codeBlockToolbar(language: string, attrs = ""): string {
+  const label = `<span class="md-code-language">${escHtml(language || "text")}</span>`;
+  const toolbar = `<div class="md-code-toolbar">${label}<button type="button" class="md-code-copy" aria-label="复制代码" title="复制代码"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg></button></div>`;
+  return `<pre${attrs}>${toolbar}`;
+}
 md.renderer.rules.fence = (tokens, idx, options, env, self) => {
   const token = tokens[idx];
-  const html = (fenceOrig as NonNullable<typeof fenceOrig>).call(
-    md.renderer, tokens, idx, options, env, self,
-  );
-  if (token.map) {
-    return html.replace(
-      "<pre>",
-      `<pre data-ls="${token.map[0] + LINE_OFFSET}" data-le="${token.map[1] + LINE_OFFSET}">`,
-    );
-  }
-  return html;
+  const rendered = (fenceOrig as NonNullable<typeof fenceOrig>).call(md.renderer, tokens, idx, options, env, self);
+  const info = token.info.trim().split(/\s+/, 1)[0] || "";
+  const attrs = token.map ? ` data-ls="${token.map[0] + LINE_OFFSET}" data-le="${token.map[1] + LINE_OFFSET}"` : "";
+  return rendered.replace("<pre>", codeBlockToolbar(info, attrs));
+};
+const codeBlockOrig = md.renderer.rules.code_block;
+md.renderer.rules.code_block = (tokens, idx, options, env, self) => {
+  const rendered = (codeBlockOrig as NonNullable<typeof codeBlockOrig>).call(md.renderer, tokens, idx, options, env, self);
+  return rendered.replace("<pre>", codeBlockToolbar(""));
 };
 
 // ---------- 默认规则绑定（渲染时机注入 resolve 上下文） ----------
@@ -357,14 +364,7 @@ export function renderMarkdown(content: string, opts: RenderOpts): string {
     const fm = stripFrontmatter(content);
     LINE_OFFSET = fm.bodyStartLine;
     const body = fixImageDests(fm.body);
-    let html = md.render(body);
-    // 任务列表复选框
-    html = html.replace(
-      /<li>(\s*)\[([ xX])\]\s/g,
-      (_all, sp, mark) =>
-        `<li><input type="checkbox" class="md-task" disabled ${mark.trim() ? "checked" : ""}>${sp ? "" : " "}`,
-    );
-    return html;
+    return md.render(body);
   } finally {
     CURRENT = null;
   }

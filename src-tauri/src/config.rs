@@ -11,11 +11,11 @@ use tauri::{AppHandle, Manager};
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct AppSettings {
-    pub theme: String,               // "dark" | "light"
-    pub attachments_dir: String,     // 粘贴图片存放目录（vault 内相对路径）
-    pub templates_dir: String,       // 模板文件夹
-    pub daily_dir: String,           // 每日笔记存放目录
-    pub daily_format: String,        // 日记文件名格式
+    pub theme: String,           // "dark" | "light"
+    pub attachments_dir: String, // 粘贴图片存放目录（vault 内相对路径）
+    pub templates_dir: String,   // 模板文件夹
+    pub daily_dir: String,       // 每日笔记存放目录
+    pub daily_format: String,    // 日记文件名格式
     /// 日记使用的模板文件名（templates_dir 内，不含路径）
     pub daily_template: Option<String>,
     /// 新建日记自动附加的标签（空 = 不加）
@@ -141,10 +141,7 @@ pub fn normalize_path(p: &str) -> String {
 }
 
 pub fn config_dir(app: &AppHandle) -> PathBuf {
-    let dir = app
-        .path()
-        .app_config_dir()
-        .expect("无法获取配置目录");
+    let dir = app.path().app_config_dir().expect("无法获取配置目录");
     let _ = std::fs::create_dir_all(&dir);
     dir
 }
@@ -175,7 +172,10 @@ fn write_json<T: Serialize + ?Sized>(path: &std::path::Path, value: &T) {
 }
 
 pub fn load_settings(app: &AppHandle) -> AppSettings {
-    read_json(&config_dir(app).join("settings.json"), AppSettings::default())
+    read_json(
+        &config_dir(app).join("settings.json"),
+        AppSettings::default(),
+    )
 }
 
 pub fn save_settings(app: &AppHandle, settings: &AppSettings) {
@@ -183,8 +183,7 @@ pub fn save_settings(app: &AppHandle, settings: &AppSettings) {
 }
 
 pub fn load_vaults(app: &AppHandle) -> Vec<VaultEntry> {
-    let mut v: Vec<VaultEntry> =
-        read_json(&config_dir(app).join("vaults.json"), Vec::new());
+    let mut v: Vec<VaultEntry> = read_json(&config_dir(app).join("vaults.json"), Vec::new());
     // 历史数据里可能存有 `/` 混写路径，读取时归一化
     for e in &mut v {
         e.path = normalize_path(&e.path);

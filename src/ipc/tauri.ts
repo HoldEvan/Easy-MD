@@ -15,7 +15,18 @@ import type {
   VaultEntry,
 } from "../types";
 
+export interface ShareStatus {
+  running: boolean;
+  port: number | null;
+  vaultName: string | null;
+  urls: string[];
+}
+
 export const api = {
+  shareStatus: () => invoke<ShareStatus>("share_status"),
+  shareStart: (port: number, password: string) => invoke<ShareStatus>("share_start", { port, password }),
+  shareStop: () => invoke<ShareStatus>("share_stop"),
+  shareExportStatic: (destination: string) => invoke<void>("share_export_static", { destination }),
   // ---- vault ----
   listVaults: () => invoke<VaultEntry[]>("list_vaults"),
   openVault: (path: string) => invoke<OpenVaultResult>("open_vault", { path }),
@@ -117,6 +128,7 @@ export const api = {
   registerContextMenu: () => invoke<void>("register_context_menu"),
   unregisterContextMenu: () => invoke<void>("unregister_context_menu"),
   openDefaultAppsSettings: () => invoke<void>("open_default_apps_settings"),
+  openExternalUrl: (url: string) => invoke<void>("open_external_url", { url }),
   onOsOpenFile: (handler: (path: string) => void): Promise<UnlistenFn> =>
     listen<string>("os-open-file", (e) => handler(e.payload)),
 

@@ -64,7 +64,9 @@ impl McpClient {
                 }
                 if let Ok(v) = serde_json::from_str::<Value>(trimmed) {
                     // 只转发带 id 的响应；通知与请求忽略（云盘 MCP 常无）
-                    if v.get("id").is_some() && (v.get("result").is_some() || v.get("error").is_some()) {
+                    if v.get("id").is_some()
+                        && (v.get("result").is_some() || v.get("error").is_some())
+                    {
                         if tx_reader.send(v).is_err() {
                             break;
                         }
@@ -175,7 +177,11 @@ impl McpClient {
             json!({ "name": name, "arguments": args }),
             timeout,
         )?;
-        if result.get("isError").and_then(|e| e.as_bool()).unwrap_or(false) {
+        if result
+            .get("isError")
+            .and_then(|e| e.as_bool())
+            .unwrap_or(false)
+        {
             return Err(anyhow!("工具 {} 返回错误：{}", name, result));
         }
         let mut out = String::new();

@@ -18,9 +18,11 @@ pub async fn ai_chat(
         return Err("未配置 AI API Key，请到 设置 → AI 中填写".into());
     }
     let prompt = truncate(prompt, 60_000);
-    tauri::async_runtime::spawn_blocking(move || chat_blocking(&settings, &prompt, system.as_deref()))
-        .await
-        .map_err(|e| format!("AI 线程异常：{}", e))?
+    tauri::async_runtime::spawn_blocking(move || {
+        chat_blocking(&settings, &prompt, system.as_deref())
+    })
+    .await
+    .map_err(|e| format!("AI 线程异常：{}", e))?
 }
 
 fn truncate(s: String, max: usize) -> String {
@@ -41,7 +43,11 @@ fn chat_blocking(
         .build()
         .map_err(|e| format!("HTTP 客户端创建失败：{}", e))?;
 
-    let base = settings.ai_base_url.trim().trim_end_matches('/').to_string();
+    let base = settings
+        .ai_base_url
+        .trim()
+        .trim_end_matches('/')
+        .to_string();
     if settings.ai_provider == "anthropic" {
         // Anthropic Messages API（base 缺 /v1 时自动补）
         let url = if base.ends_with("/v1") {
@@ -116,9 +122,7 @@ fn to_text(
     pick: impl Fn(&Value) -> Option<String>,
 ) -> Result<String, String> {
     let status = resp.status();
-    let text = resp
-        .text()
-        .map_err(|e| format!("读取响应失败：{}", e))?;
+    let text = resp.text().map_err(|e| format!("读取响应失败：{}", e))?;
     let v: Value = serde_json::from_str(&text)
         .map_err(|_| anyhow!("响应不是 JSON：{}", &text[..text.len().min(300)]))
         .map_err(|e| e.to_string())?;

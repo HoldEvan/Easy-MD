@@ -37,15 +37,19 @@ import { ref } from "vue";
 import { getVersion } from "@tauri-apps/api/app";
 import Icon from "../common/Icon.vue";
 import { t } from "../../i18n";
+import { api } from "../../ipc/tauri";
 import pkg from "../../../package.json";
 
 const AUTHOR = "clb";
 const EMAIL = "lamthebest@foxmail.com";
 const REPO = "https://github.com/FortC/Easy-MD";
 
-// 与 PreviewView 外链一致：走 window.open 由系统默认浏览器打开
-function openRepo() {
-  window.open(REPO, "_blank");
+async function openRepo() {
+  try {
+    await api.openExternalUrl(REPO);
+  } catch (e) {
+    console.error("打开源码仓库失败：", e);
+  }
 }
 
 // 版本运行时从 Tauri 读取，与安装包保持一致；读取失败退回清单版本

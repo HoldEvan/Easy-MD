@@ -22,8 +22,11 @@ fn with_vault<T>(
 #[tauri::command]
 pub fn reveal_in_file_manager(state: State<'_, AppState>, path: String) -> Result<(), String> {
     let full = with_vault(&state, |vc| {
-        let full = vc.safe_join(&path).map_err(|e| e.to_string())?
-            .canonicalize().map_err(|e| e.to_string())?;
+        let full = vc
+            .safe_join(&path)
+            .map_err(|e| e.to_string())?
+            .canonicalize()
+            .map_err(|e| e.to_string())?;
         let root = vc.root.canonicalize().map_err(|e| e.to_string())?;
         if !full.starts_with(&root) {
             return Err("路径超出知识库范围".into());
@@ -43,7 +46,10 @@ pub fn reveal_in_file_manager(state: State<'_, AppState>, path: String) -> Resul
         let path = if let Some(unc) = display.strip_prefix(r"\\?\UNC\") {
             format!(r"\\{}", unc)
         } else {
-            display.strip_prefix(r"\\?\").unwrap_or(&display).to_string()
+            display
+                .strip_prefix(r"\\?\")
+                .unwrap_or(&display)
+                .to_string()
         };
         let mut c = std::process::Command::new("explorer.exe");
         c.arg(format!("/select,{}", path));
@@ -52,10 +58,16 @@ pub fn reveal_in_file_manager(state: State<'_, AppState>, path: String) -> Resul
     #[cfg(not(any(windows, target_os = "macos")))]
     let mut command = {
         let mut c = std::process::Command::new("xdg-open");
-        c.arg(if full.is_dir() { full.as_path() } else { full.parent().unwrap_or(&full) });
+        c.arg(if full.is_dir() {
+            full.as_path()
+        } else {
+            full.parent().unwrap_or(&full)
+        });
         c
     };
-    command.spawn().map_err(|e| format!("无法打开文件管理器：{}", e))?;
+    command
+        .spawn()
+        .map_err(|e| format!("无法打开文件管理器：{}", e))?;
     Ok(())
 }
 
@@ -211,7 +223,11 @@ pub fn list_dir(state: State<'_, AppState>, path: Option<String>) -> Result<Vec<
                 name: name.clone(),
                 path: rel,
                 is_dir,
-                kind: if is_dir { "dir".into() } else { entry_kind(&name).into() },
+                kind: if is_dir {
+                    "dir".into()
+                } else {
+                    entry_kind(&name).into()
+                },
             };
             if is_dir {
                 dirs.push(item);
@@ -250,7 +266,11 @@ fn unique_path(mut full: std::path::PathBuf) -> std::path::PathBuf {
     if !full.exists() {
         return full;
     }
-    let stem = full.file_stem().unwrap_or_default().to_string_lossy().to_string();
+    let stem = full
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     let ext = full
         .extension()
         .map(|e| format!(".{}", e.to_string_lossy()))
@@ -276,7 +296,11 @@ pub fn create_note(
     with_vault(&state, |vc| {
         let dir = folder.unwrap_or_default();
         let name = sanitize_name(&title);
-        let name = if name.to_lowercase().ends_with(".md") { name } else { format!("{}.md", name) };
+        let name = if name.to_lowercase().ends_with(".md") {
+            name
+        } else {
+            format!("{}.md", name)
+        };
         let dir_full = vc.safe_join(&dir).map_err(|e| e.to_string())?;
         // 父目录不存在时自动创建（新建日记/模板等场景）
         std::fs::create_dir_all(&dir_full).map_err(|e| format!("创建目录失败：{}", e))?;
@@ -369,10 +393,22 @@ pub fn save_image(
 ) -> Result<String, String> {
     let settings = config::load_settings(&app);
     with_vault(&state, |vc| {
-        let dir = settings.attachments_dir.trim().trim_matches('/').to_string();
-        let dir = if dir.is_empty() { "assets".to_string() } else { dir };
+        let dir = settings
+            .attachments_dir
+            .trim()
+            .trim_matches('/')
+            .to_string();
+        let dir = if dir.is_empty() {
+            "assets".to_string()
+        } else {
+            dir
+        };
         let ext = ext.trim_start_matches('.').to_lowercase();
-        let ext = if ext.is_empty() { "png".to_string() } else { ext };
+        let ext = if ext.is_empty() {
+            "png".to_string()
+        } else {
+            ext
+        };
         let now = Local::now();
         let name = format!("Pasted image {}.{}", now.format("%Y%m%d%H%M%S"), ext);
         let dir_full = vc.safe_join(&dir).map_err(|e| e.to_string())?;
@@ -432,7 +468,11 @@ pub fn list_all_files_with_mtime(state: State<'_, AppState>) -> Result<Vec<FileW
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
-            out.push(FileWithTime { path: rel, mtime, kind });
+            out.push(FileWithTime {
+                path: rel,
+                mtime,
+                kind,
+            });
         }
 
         // 临时文件模式：库根是 config_dir/temp，原目录里的图片不在库内。
@@ -490,9 +530,20 @@ pub fn duplicate_file(state: State<'_, AppState>, path: String) -> Result<String
         if !src.exists() {
             return Err("文件不存在".into());
         }
-        let _name = src.file_name().unwrap_or_default().to_string_lossy().to_string();
-        let stem = src.file_stem().unwrap_or_default().to_string_lossy().to_string();
-        let ext = src.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+        let _name = src
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let stem = src
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let ext = src
+            .extension()
+            .map(|e| format!(".{}", e.to_string_lossy()))
+            .unwrap_or_default();
         let parent = src.parent().unwrap_or(Path::new("")).to_path_buf();
         let dst = unique_path(parent.join(format!("{} 副本{}", stem, ext)));
         std::fs::copy(&src, &dst).map_err(|e| format!("复制失败：{}", e))?;

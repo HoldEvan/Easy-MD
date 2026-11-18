@@ -24,8 +24,12 @@ pub fn save_settings(app: AppHandle, settings: AppSettings) -> Result<(), String
 #[tauri::command]
 pub fn get_config_dirs(app: AppHandle) -> ConfigDirs {
     ConfigDirs {
-        config_dir: crate::config::config_dir(&app).to_string_lossy().to_string(),
-        snippets_dir: crate::config::snippets_dir(&app).to_string_lossy().to_string(),
+        config_dir: crate::config::config_dir(&app)
+            .to_string_lossy()
+            .to_string(),
+        snippets_dir: crate::config::snippets_dir(&app)
+            .to_string_lossy()
+            .to_string(),
     }
 }
 

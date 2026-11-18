@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>知识库分享</title>
+  <link rel="stylesheet" href="share.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand"><span id="vault-name">知识库</span></div>
+      <div class="toolbar"><button id="theme-toggle" type="button">切换主题</button><button id="reading-mode" type="button" aria-pressed="false">阅读模式</button></div>
+    </header>
+    <main class="layout">
+      <aside class="sidebar" aria-label="文件导航">
+        <section class="stats" id="stats"></section>
+        <label class="search"><span aria-hidden="true">筛选</span><input id="search" type="search" placeholder="输入名称" autocomplete="off"></label>
+        <div class="tree-title"><span>文件</span><span id="file-count"></span></div>
+        <nav id="tree" class="tree" aria-label="文件树"></nav>
+      </aside>
+      <section class="content" id="content" aria-live="polite">
+        <div class="welcome"><h1>知识库分享</h1><p>从左侧选择文件开始浏览。</p></div>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="share.js"></script>
+</body>
+</html>

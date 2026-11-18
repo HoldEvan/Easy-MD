@@ -39,11 +39,12 @@ pub struct VaultChangedPayload {
 
 pub fn spawn(root: PathBuf, app: AppHandle) -> Result<WatcherHandle> {
     let (tx, rx): (Sender<Event>, Receiver<Event>) = std::sync::mpsc::channel();
-    let mut watcher = notify::recommended_watcher(move |res: std::result::Result<Event, notify::Error>| {
-        if let Ok(ev) = res {
-            let _ = tx.send(ev);
-        }
-    })?;
+    let mut watcher =
+        notify::recommended_watcher(move |res: std::result::Result<Event, notify::Error>| {
+            if let Ok(ev) = res {
+                let _ = tx.send(ev);
+            }
+        })?;
     watcher.watch(&root, RecursiveMode::Recursive)?;
 
     let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
@@ -73,7 +74,10 @@ pub fn spawn(root: PathBuf, app: AppHandle) -> Result<WatcherHandle> {
         }
     });
 
-    Ok(WatcherHandle { stop: stop_tx, _watcher: watcher })
+    Ok(WatcherHandle {
+        stop: stop_tx,
+        _watcher: watcher,
+    })
 }
 
 fn handle_batch(app: &AppHandle, root: &std::path::Path, paths: HashSet<PathBuf>) {

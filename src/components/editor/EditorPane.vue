@@ -167,6 +167,8 @@
       />
     </div>
 
+    <ShareDialog v-if="shareOpen" @close="shareOpen = false" />
+
     <!-- 主体 -->
     <div ref="bodyEl" class="ep-body" :class="`ep-${editor.mode}`">
       <div
@@ -201,6 +203,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import Icon from "../common/Icon.vue";
+import ShareDialog from "../common/ShareDialog.vue";
 import DropdownMenu, { type DropItem } from "../common/DropdownMenu.vue";
 import SourceEditor from "./SourceEditor.vue";
 import PreviewView from "./PreviewView.vue";
@@ -224,6 +227,7 @@ const vault = useVaultStore();
 const indexStore = useNotesIndexStore();
 const aiStore = useAiStore();
 const menuOpen = ref(false);
+const shareOpen = ref(false);
 const moreBtn = ref<HTMLElement>();
 const bodyEl = ref<HTMLElement>();
 const splitRatio = ref(50);
@@ -387,6 +391,7 @@ const menuItems = computed<DropItem[]>(() => [
   { key: "md", label: t("ed.expMd"), icon: "download", hint: t("ed.keepWiki") },
   { key: "html", label: t("ed.expHtml"), icon: "download", hint: t("ed.singleFile") },
   { key: "pdf", label: t("ed.expPdf"), icon: "download", hint: t("ed.printHint") },
+  { key: "share", label: "分享", icon: "share-2", hint: keyHint("Ctrl+F5") },
   { key: "sep-view", label: "", separator: true },
   { key: "graph", label: t("ed.openGraph"), icon: "share-2", hint: keyHint("Ctrl+G") },
   { key: "search", label: t("ed.searchAll"), icon: "search", hint: keyHint("Ctrl+Shift+F") },
@@ -394,6 +399,10 @@ const menuItems = computed<DropItem[]>(() => [
 
 async function onMenuSelect(key: string) {
   menuOpen.value = false;
+  if (key === "share") {
+    shareOpen.value = true;
+    return;
+  }
   if (key === "aisum") {
     if (!editor.isOpen) return;
     aiStore.openWith("");
@@ -478,11 +487,19 @@ function onBodyPaste(ev: ClipboardEvent) {
   }
 }
 
+function onShareShortcut(event: KeyboardEvent) {
+  if (event.key !== "F5" || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+  event.preventDefault();
+  if (!event.repeat) void onMenuSelect("share");
+}
+
 onMounted(() => {
   bodyEl.value?.addEventListener("paste", onBodyPaste, true);
+  window.addEventListener("keydown", onShareShortcut, true);
 });
 onUnmounted(() => {
   bodyEl.value?.removeEventListener("paste", onBodyPaste, true);
+  window.removeEventListener("keydown", onShareShortcut, true);
 });
 </script>
 

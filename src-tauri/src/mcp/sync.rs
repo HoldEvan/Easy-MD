@@ -60,7 +60,10 @@ fn bind_tools(client: &mut McpClient, map: &McpToolMap) -> Result<BoundTools> {
     };
     Ok(BoundTools {
         list: find(&["list", "search", "readdir"], &map.list)?,
-        download: find(&["download", "read_file", "get_file", "read"], &map.download)?,
+        download: find(
+            &["download", "read_file", "get_file", "read"],
+            &map.download,
+        )?,
         upload: find(&["upload", "write_file", "put", "write"], &map.upload)?,
         delete: find(&["delete", "remove", "rm"], &map.delete)?,
         mkdir: find(&["mkdir", "create_dir", "makedir"], &map.mkdir).ok(),
@@ -120,15 +123,12 @@ fn parse_remote_list(text: &str) -> Vec<RemoteFile> {
 /// 本地快照：vault 内全部非隐藏文件
 fn local_snapshot(root: &Path) -> Vec<(String, u64, u64)> {
     let mut out = Vec::new();
-    for entry in walkdir::WalkDir::new(root)
-        .into_iter()
-        .filter_entry(|e| {
-            e.depth() == 0
-                || (!e.file_name().to_string_lossy().starts_with('.')
-                    && e.file_name() != "node_modules"
-                    && e.file_name().to_string_lossy() != "Thumbs.db")
-        })
-    {
+    for entry in walkdir::WalkDir::new(root).into_iter().filter_entry(|e| {
+        e.depth() == 0
+            || (!e.file_name().to_string_lossy().starts_with('.')
+                && e.file_name() != "node_modules"
+                && e.file_name().to_string_lossy() != "Thumbs.db")
+    }) {
         let Ok(e) = entry else { continue };
         if !e.file_type().is_file() {
             continue;
@@ -154,11 +154,7 @@ fn local_snapshot(root: &Path) -> Vec<(String, u64, u64)> {
 }
 
 /// 执行一次双向同步。on_progress: (阶段描述, 已完成, 总数)
-pub fn run_sync<F>(
-    root: &Path,
-    cfg: &McpServerConfig,
-    mut on_progress: F,
-) -> Result<SyncReport>
+pub fn run_sync<F>(root: &Path, cfg: &McpServerConfig, mut on_progress: F) -> Result<SyncReport>
 where
     F: FnMut(String, usize, usize),
 {
@@ -203,10 +199,7 @@ where
                 let differs = r.size.map(|s| s != *size).unwrap_or(true);
                 if differs {
                     // 远端无 mtime 时采用"本地优先"（本地为真相源），有 mtime 则新者胜
-                    let local_newer = r
-                        .mtime
-                        .map(|rm| *_mtime >= rm)
-                        .unwrap_or(true);
+                    let local_newer = r.mtime.map(|rm| *_mtime >= rm).unwrap_or(true);
                     actions.push(Action {
                         path: rel.clone(),
                         kind: if local_newer { "upload" } else { "download" },
@@ -238,7 +231,11 @@ where
         on_progress(
             format!(
                 "{} {}（{}）",
-                if act.kind == "upload" { "上传" } else { "下载" },
+                if act.kind == "upload" {
+                    "上传"
+                } else {
+                    "下载"
+                },
                 act.path,
                 act.reason
             ),
@@ -294,8 +291,7 @@ where
                         std::fs::create_dir_all(parent)
                             .map_err(|e| anyhow!("创建目录失败：{}", e))?;
                     }
-                    std::fs::write(&full, content)
-                        .map_err(|e| anyhow!("写入本地失败：{}", e))?;
+                    std::fs::write(&full, content).map_err(|e| anyhow!("写入本地失败：{}", e))?;
                     Ok(())
                 }
             }

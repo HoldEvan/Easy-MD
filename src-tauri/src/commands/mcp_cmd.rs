@@ -15,8 +15,13 @@ pub struct TestResult {
 /// 测试 MCP 配置：连接 + 列出工具（设置页兼容性自检）
 #[tauri::command]
 pub async fn mcp_test(_app: AppHandle, config: McpServerConfig) -> Result<TestResult, String> {
-    let res = tauri::async_runtime::spawn_blocking(move || {
-        match crate::mcp::client::McpClient::connect(&config.command, &config.args, &config.env, &config.name) {
+    let res =
+        tauri::async_runtime::spawn_blocking(move || match crate::mcp::client::McpClient::connect(
+            &config.command,
+            &config.args,
+            &config.env,
+            &config.name,
+        ) {
             Ok(mut client) => match client.list_tools() {
                 Ok(tools) => TestResult {
                     ok: true,
@@ -37,10 +42,9 @@ pub async fn mcp_test(_app: AppHandle, config: McpServerConfig) -> Result<TestRe
                 tools: vec![],
                 error: format!("{}", e),
             },
-        }
-    })
-    .await
-    .map_err(|e| format!("{}", e))?;
+        })
+        .await
+        .map_err(|e| format!("{}", e))?;
     Ok(res)
 }
 
@@ -53,7 +57,10 @@ pub struct SyncProgress {
 
 /// 手动/定时同步入口：使用当前激活的 MCP 配置
 #[tauri::command]
-pub async fn mcp_sync(app: AppHandle, state: State<'_, AppState>) -> Result<crate::mcp::sync::SyncReport, String> {
+pub async fn mcp_sync(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<crate::mcp::sync::SyncReport, String> {
     let settings = config::load_settings(&app);
     let name = settings
         .active_mcp
@@ -82,7 +89,11 @@ pub async fn mcp_sync(app: AppHandle, state: State<'_, AppState>) -> Result<crat
         crate::mcp::sync::run_sync(&root, &cfg, move |message, done, total| {
             let _ = app2.emit(
                 "mcp-sync-progress",
-                SyncProgress { message, done, total },
+                SyncProgress {
+                    message,
+                    done,
+                    total,
+                },
             );
         })
     });

@@ -49,6 +49,9 @@ pub fn resolve_link(state: State<'_, AppState>, target: String) -> Result<Resolv
     let guard = state.vault.lock().map_err(|e| e.to_string())?;
     match guard.as_ref() {
         Some(vc) => Ok(vc.engine.resolve(&target)),
-        None => Ok(ResolveResult { path: None, ambiguous: false }),
+        None => Ok(ResolveResult {
+            path: None,
+            ambiguous: false,
+        }),
     }
 }

@@ -20,6 +20,8 @@ import {
   slugify,
 } from "../../lib/markdown/renderer";
 import { isImageName, resolveTarget } from "../../lib/markdown/links";
+import { renderMermaidBlocks } from "../../lib/markdown/mermaid";
+import { copyWithFeedback } from "../../lib/markdown/copyFeedback";
 import { t } from "../../i18n";
 import { clamp01, isScrollSyncLocked, lockScrollSync } from "../../lib/scrollSync";
 
@@ -53,6 +55,7 @@ watch(
     previewEl.value.innerHTML = html.value;
     await fillEmbeds(previewEl.value, 0);
     await fixupRawImages(previewEl.value);
+    await renderMermaidBlocks(previewEl.value);
     scrollToLine(keepLine);
     handlePendingJump();
   },
@@ -80,6 +83,7 @@ onMounted(async () => {
     previewEl.value.innerHTML = html.value;
     await fillEmbeds(previewEl.value, 0);
     await fixupRawImages(previewEl.value);
+    await renderMermaidBlocks(previewEl.value);
     handlePendingJump();
   }
 });
@@ -274,8 +278,19 @@ async function fillEmbeds(root: HTMLElement, depth: number) {
 }
 
 // ---- 点击：内链跳转 / 未解析创建 / 标签 / 外链 ----
-function onClick(ev: MouseEvent) {
-  const a = (ev.target as HTMLElement).closest("a");
+async function onClick(ev: MouseEvent) {
+  const target = ev.target as HTMLElement;
+  const copyButton = target.closest<HTMLButtonElement>(".md-code-copy");
+  if (copyButton) {
+    ev.preventDefault();
+    const code = copyButton.closest("pre")?.querySelector("code")?.textContent ?? "";
+    await copyWithFeedback(copyButton, async () => {
+      await navigator.clipboard.writeText(code);
+      return true;
+    });
+    return;
+  }
+  const a = target.closest("a");
   if (!a) return;
   if (a.classList.contains("internal-link")) {
     const target = a.dataset.target || "";
@@ -404,6 +419,7 @@ onUnmounted(() => {});
   padding: 0.1em 0.35em;
 }
 .markdown-rendered pre {
+  position: relative;
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
@@ -411,6 +427,30 @@ onUnmounted(() => {});
   overflow-x: auto;
   margin: 0.9em 0;
 }
+.markdown-rendered .md-code-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 20px;
+  margin: -4px -4px 6px;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--font-ui-smaller);
+}
+.markdown-rendered .md-code-copy {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  background: transparent;
+}
+.markdown-rendered .md-code-copy:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.markdown-rendered .md-code-copy svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; }
 .markdown-rendered pre code {
   background: none;
   padding: 0;

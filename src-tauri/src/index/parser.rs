@@ -14,8 +14,7 @@ static RE_TAG: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)(^|[^\w&\\])#([\p{L}\p{N}_][\p{L}\p{N}_/-]*)").unwrap());
 static RE_BLOCK_ID: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\^([A-Za-z0-9-]+)\s*$").unwrap());
-static RE_INLINE_CODE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"`+[^`\n]*`+").unwrap());
+static RE_INLINE_CODE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"`+[^`\n]*`+").unwrap());
 static RE_MD_LINK: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"!?\[[^\]\[]*\]\([^)\n]*\)").unwrap());
 
@@ -175,8 +174,8 @@ fn mask_code_and_links(body: &str) -> String {
     let mut fence_marker = String::new();
     for line in body.lines() {
         let trimmed = line.trim_start();
-        let is_fence = (trimmed.starts_with("```") || trimmed.starts_with("~~~"))
-            && trimmed.len() >= 3;
+        let is_fence =
+            (trimmed.starts_with("```") || trimmed.starts_with("~~~")) && trimmed.len() >= 3;
         if is_fence && !in_fence {
             in_fence = true;
             fence_marker = trimmed[..3].to_string();
@@ -233,7 +232,8 @@ mod tests {
 
     #[test]
     fn wikilinks_variants() {
-        let text = "# t\n[[Note A]] [[B|别名]] [[C#标题]] [[D#^abc1]] ![[E]] ![[img.png]] [[#同文件标题]]";
+        let text =
+            "# t\n[[Note A]] [[B|别名]] [[C#标题]] [[D#^abc1]] ![[E]] ![[img.png]] [[#同文件标题]]";
         let p = parse_note(text);
         assert_eq!(p.links.len(), 7);
         assert_eq!(p.links[0].target, "Note A");

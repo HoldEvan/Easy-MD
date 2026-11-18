@@ -110,7 +110,8 @@ fn write_context_reg(exe: &str) -> Result<(), String> {
         let (key, _) = classes
             .create_subkey(&shell_path)
             .map_err(|e| format!("写入注册表失败：{}", e))?;
-        key.set_value("", &"用 EasyMD 打开").map_err(|e| e.to_string())?;
+        key.set_value("", &"用 EasyMD 打开")
+            .map_err(|e| e.to_string())?;
         key.set_value("Icon", &exe).map_err(|e| e.to_string())?;
         let (cmd_key, _) = key
             .create_subkey("command")
@@ -137,7 +138,9 @@ fn write_context_reg(exe: &str) -> Result<(), String> {
         let (ext_key, _) = classes
             .create_subkey(format!(".{}\\OpenWithProgids", ext))
             .map_err(|e| format!("写入注册表失败：{}", e))?;
-        ext_key.set_value("EasyMD.file", &"").map_err(|e| e.to_string())?;
+        ext_key
+            .set_value("EasyMD.file", &"")
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -151,14 +154,13 @@ fn remove_context_reg() -> Result<(), String> {
         .open_subkey_with_flags("Software\\Classes", KEY_WRITE)
         .map_err(|e| format!("打开注册表失败：{}", e))?;
     for ext in ["md", "markdown", "canvas"] {
-        let _ = classes.delete_subkey_all(format!("SystemFileAssociations\\.{}\\shell\\EasyMD", ext));
+        let _ =
+            classes.delete_subkey_all(format!("SystemFileAssociations\\.{}\\shell\\EasyMD", ext));
         let _ = classes.delete_subkey_all(format!(".{}\\OpenWithProgids", ext));
         let _ = classes.delete_subkey_all("EasyMD.file");
     }
     Ok(())
 }
-
-
 
 /// 临时文件打开：拷贝到内置临时目录后以该目录为 vault 打开
 #[tauri::command]
@@ -177,7 +179,11 @@ pub fn open_as_temp(
     std::fs::create_dir_all(&temp_dir).map_err(|e| format!("创建临时目录失败：{}", e))?;
 
     // 拷贝文件
-    let name = src.file_name().unwrap_or_default().to_string_lossy().to_string();
+    let name = src
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     let dst = temp_dir.join(&name);
     std::fs::copy(&src, &dst).map_err(|e| format!("拷贝失败：{}", e))?;
 
@@ -205,6 +211,52 @@ pub fn open_as_temp(
     })
 }
 
+/// Open a validated HTTP(S) URL with the system default browser.
+#[tauri::command]
+pub fn open_external_url(url: String) -> Result<(), String> {
+    open_external_url_inner(&url)
+}
+
+fn validate_external_url(url: &str) -> Result<(), String> {
+    let parsed = url::Url::parse(url).map_err(|_| "Invalid URL".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.host_str().is_none()
+        || url.chars().any(|c| c.is_control() || c.is_whitespace())
+    {
+        return Err("Only HTTP(S) URLs are allowed".into());
+    }
+    Ok(())
+}
+
+fn open_external_url_inner(url: &str) -> Result<(), String> {
+    use std::process::Command;
+    validate_external_url(url)?;
+    #[cfg(target_os = "macos")]
+    let mut command = Command::new("open");
+    #[cfg(windows)]
+    let mut command = Command::new("explorer.exe");
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let mut command = Command::new("xdg-open");
+    command
+        .arg(url)
+        .spawn()
+        .map_err(|e| format!("Unable to open URL: {}", e))?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod external_url_tests {
+    use super::validate_external_url;
+
+    #[test]
+    fn accepts_only_valid_http_urls() {
+        assert!(validate_external_url("https://example.com/path?q=1").is_ok());
+        assert!(validate_external_url("http://127.0.0.1:8080").is_ok());
+        assert!(validate_external_url("file:///etc/passwd").is_err());
+        assert!(validate_external_url("javascript:alert(1)").is_err());
+        assert!(validate_external_url("https://example.com/\nopen").is_err());
+    }
+}
 
 /// 打开系统设置 → 默认应用（让用户设 EasyMD 为 .md 默认打开方式）
 /// Windows 走 ms-settings:defaultapps；macOS 无对应 URI，直接提示用户在「打开方式」里设置。
@@ -222,7 +274,10 @@ pub fn open_default_apps_settings() -> Result<(), String> {
     {
         // macOS：文件关联由 LaunchServices 管理，交给系统「显示简介 → 打开方式」，
         // 这里不弹系统窗口，只返回明确提示，避免静默失败。
-        Err("macOS 请在访达中右键 .md 文件 → 显示简介 → 打开方式，选择 EasyMD 后点「全部更改」".into())
+        Err(
+            "macOS 请在访达中右键 .md 文件 → 显示简介 → 打开方式，选择 EasyMD 后点「全部更改」"
+                .into(),
+        )
     }
 }
 

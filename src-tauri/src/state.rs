@@ -27,7 +27,10 @@ impl VaultContext {
             anyhow::bail!("非法路径：{:?}", rel);
         }
         for c in rel_path.components() {
-            if matches!(c, Component::ParentDir | Component::RootDir | Component::Prefix(_)) {
+            if matches!(
+                c,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            ) {
                 anyhow::bail!("非法路径：{:?}", rel);
             }
         }

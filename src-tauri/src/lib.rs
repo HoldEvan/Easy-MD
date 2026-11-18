@@ -5,6 +5,7 @@ mod commands;
 mod config;
 mod index;
 mod mcp;
+mod share;
 mod state;
 
 use std::path::{Component, Path, PathBuf};
@@ -32,6 +33,7 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_dialog::init())
         .manage(state::AppState::default())
+        .manage(share::ShareState::default())
         .register_uri_scheme_protocol("emdasset", |ctx, request| {
             serve_asset(ctx.app_handle(), &request.uri().to_string())
         })
@@ -91,6 +93,7 @@ pub fn run() {
             commands::os_open::register_context_menu,
             commands::os_open::unregister_context_menu,
             commands::os_open::open_default_apps_settings,
+            commands::os_open::open_external_url,
             commands::fsops::import_files,
             commands::fsops::read_external_binary,
             commands::extimg::fetch_external_image,
@@ -99,10 +102,17 @@ pub fn run() {
             commands::fsops::duplicate_file,
             commands::fsops::delete_files,
             commands::ai::ai_chat,
+            share::share_status,
+            share::share_start,
+            share::share_stop,
+            share::share_export_static,
         ])
         .build(tauri::generate_context!())
         .expect("EasyMD 启动失败")
         .run(|app, event| {
+            if matches!(&event, tauri::RunEvent::Exit) {
+                let _ = app.state::<share::ShareState>().stop();
+            }
             // macOS：访达「用 EasyMD 打开」不经过命令行参数，而是投递 RunEvent::Opened。
             // 前端挂载完成前收到的路径写进 pending_file（由 get_pending_file 取走）；
             // 前端就绪后直接 emit，交给 onOsOpenFile 处理。
@@ -114,11 +124,11 @@ pub fn run() {
                     let _ = window.set_focus();
                 }
                 let st = app.state::<state::AppState>();
-                let ready = st
-                    .frontend_ready
-                    .load(std::sync::atomic::Ordering::Acquire);
+                let ready = st.frontend_ready.load(std::sync::atomic::Ordering::Acquire);
                 for url in urls {
-                    let Ok(path) = url.to_file_path() else { continue };
+                    let Ok(path) = url.to_file_path() else {
+                        continue;
+                    };
                     let path = path.to_string_lossy().to_string();
                     if !is_openable(&path) {
                         continue;
@@ -162,8 +172,11 @@ fn serve_asset(app: &tauri::AppHandle, uri: &str) -> tauri::http::Response<Vec<u
         "emdasset://",
     ]
     .iter()
-    .find_map(|p| uri_lower.strip_prefix(p).map(|r| &uri[uri.len() - r.len()..]))
-    {
+    .find_map(|p| {
+        uri_lower
+            .strip_prefix(p)
+            .map(|r| &uri[uri.len() - r.len()..])
+    }) {
         Some(r) => r,
         None => return not_found(),
     };
@@ -180,7 +193,9 @@ fn serve_asset(app: &tauri::AppHandle, uri: &str) -> tauri::http::Response<Vec<u
         if !ok {
             return not_found();
         }
-        let full = crate::config::config_dir(app).join("external_cache").join(name);
+        let full = crate::config::config_dir(app)
+            .join("external_cache")
+            .join(name);
         return match std::fs::read(&full) {
             Ok(b) => {
                 let mime = mime_of(name.rsplit('.').next().unwrap_or(""));
@@ -205,9 +220,12 @@ fn serve_asset(app: &tauri::AppHandle, uri: &str) -> tauri::http::Response<Vec<u
     // 相对路径安全校验（拒绝绝对路径与 .. 穿越）
     let rel_path = Path::new(&rel);
     if rel_path.is_absolute()
-        || rel_path
-            .components()
-            .any(|c| matches!(c, Component::ParentDir | Component::RootDir | Component::Prefix(_)))
+        || rel_path.components().any(|c| {
+            matches!(
+                c,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
     {
         return not_found();
     }
@@ -239,10 +257,7 @@ fn serve_asset(app: &tauri::AppHandle, uri: &str) -> tauri::http::Response<Vec<u
         let rel2 = percent_encoding::percent_decode_str(&rel)
             .decode_utf8_lossy()
             .to_string();
-        if !rel2.is_empty()
-            && !rel2.contains("..")
-            && !Path::new(&rel2).is_absolute()
-        {
+        if !rel2.is_empty() && !rel2.contains("..") && !Path::new(&rel2).is_absolute() {
             bytes = std::fs::read(vc.root.join(rel2.replace('\\', "/"))).ok();
         }
     }
@@ -260,8 +275,10 @@ fn serve_asset(app: &tauri::AppHandle, uri: &str) -> tauri::http::Response<Vec<u
                 .and_then(|e| e.to_str())
                 .unwrap_or("")
                 .to_lowercase();
-            let is_image = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif"]
-                .contains(&ext.as_str());
+            let is_image = [
+                "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif",
+            ]
+            .contains(&ext.as_str());
             let canonical_root = asset_root.canonicalize().ok();
             let canonical_cand = cand.canonicalize().ok();
             let contained = canonical_root

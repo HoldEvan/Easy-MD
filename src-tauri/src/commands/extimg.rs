@@ -87,7 +87,8 @@ pub fn fetch_external_image(app: AppHandle, url: String) -> Result<String, Strin
     if bytes.len() > 30 * 1024 * 1024 {
         return Err("图片超过 30MB 上限".into());
     }
-    let ext = sniff_ext(&bytes).ok_or_else(|| "无法识别的图片格式（可能需要登录或链接已失效）".to_string())?;
+    let ext = sniff_ext(&bytes)
+        .ok_or_else(|| "无法识别的图片格式（可能需要登录或链接已失效）".to_string())?;
     let name = format!("{}.{}", hash, ext);
     std::fs::write(dir.join(&name), &bytes).map_err(|e| format!("写缓存失败：{}", e))?;
     Ok(format!("external/{}", name))

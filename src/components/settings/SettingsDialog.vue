@@ -137,7 +137,7 @@
           </div>
           <div class="st-row">
             <label>{{ t("st.addSnippet") }}</label>
-            <button class="emd-btn" @click="addSnippet">
+            <button class="emd-btn" @click="snippetDialogOpen = true">
               <Icon name="plus" :size="13" /> {{ t("st.newSnippet") }}
             </button>
           </div>
@@ -165,6 +165,12 @@
         </transition>
       </div>
     </div>
+    <InputDialog
+      v-if="snippetDialogOpen"
+      :title="t('st.snippetName')"
+      @confirm="addSnippet"
+      @cancel="snippetDialogOpen = false"
+    />
   </div>
   </transition>
 </template>
@@ -172,6 +178,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import Icon from "../common/Icon.vue";
+import InputDialog from "../common/InputDialog.vue";
 import McpSettings from "./McpSettings.vue";
 import TemplatePane from "./TemplatePane.vue";
 import AiPane from "./AiPane.vue";
@@ -189,6 +196,7 @@ const settings = useSettingsStore();
 const indexStore = useNotesIndexStore();
 const tab = ref("general");
 const rebuilt = ref(false);
+const snippetDialogOpen = ref(false);
 const count = ref(0);
 const dailyTemplates = ref<TemplateFile[]>([]);
 
@@ -258,16 +266,16 @@ async function removeSnippet(name: string) {
   window.dispatchEvent(new CustomEvent("emd-snippets-changed"));
 }
 
-async function addSnippet() {
-  const name = prompt(t("st.snippetName"));
-  if (!name) return;
+async function addSnippet(name: string) {
+  snippetDialogOpen.value = false;
   try {
-    await api.createSnippetFile(name.trim());
+    await api.createSnippetFile(name);
   } catch (e) {
     alert(String(e));
     return;
   }
-  settings.data.css_snippets.push({ name: name.trim() + ".css", enabled: true });
+  const fileName = name.toLowerCase().endsWith(".css") ? name : `${name}.css`;
+  settings.data.css_snippets.push({ name: fileName, enabled: true });
   await settings.persist();
   window.dispatchEvent(new CustomEvent("emd-snippets-changed"));
 }
