@@ -91,7 +91,30 @@ function imageAt(view: EditorView, pos: number) {
     from: Math.max(0, pos - 1),
     to: Math.min(view.state.doc.length, pos + 1),
     enter(node) {
-      if (node.name !== "Image" || pos < node.from || pos > node.to) return;
+      if (pos < node.from || pos > node.to) return;
+      if (node.name === "HTMLTag" || node.name === "HTMLBlock") {
+        const html = view.state.doc.sliceString(node.from, node.to);
+        // Only inspect HTML syntax nodes: fenced/inline code is not an image.
+        // Quoted attributes may contain '>' or span multiple lines.
+        const tags = /<!--[^]*?-->|<img\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+        for (const tag of html.matchAll(tags)) {
+          const from = node.from + tag.index!;
+          const to = from + tag[0].length;
+          if (tag[0].startsWith("<!--") || pos < from || pos > to) continue;
+          const attrs = /([^\s=<>/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+          for (const attr of tag[0].slice(4, -1).matchAll(attrs)) {
+            if (attr[1].toLowerCase() !== "src") continue;
+            const raw = attr[2] ?? attr[3] ?? attr[4] ?? "";
+            // Decode entities without inserting HTML or starting an image request.
+            const decoder = document.createElement("textarea");
+            decoder.innerHTML = raw.replace(/</g, "&lt;");
+            if (decoder.value) matches.push({ from, to, src: decoder.value });
+            break;
+          }
+        }
+        return false;
+      }
+      if (node.name !== "Image") return;
       let src = "";
       for (let child = node.node.firstChild; child; child = child.nextSibling) {
         if (child.name === "URL") {
