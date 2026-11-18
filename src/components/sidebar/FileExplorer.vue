@@ -57,6 +57,7 @@ import { useUiStore } from "../../stores/ui";
 import { api } from "../../ipc/tauri";
 import { copyText } from "../../lib/clipboard";
 import { t, tf } from "../../i18n";
+import { isMac, isWindows } from "../../lib/platform";
 import type { FsEntry } from "../../types";
 
 const vault = useVaultStore();
@@ -85,8 +86,10 @@ const dialog = reactive({
 /** 菜单项根据右键目标动态生成 */
 const menuItems = computed(() => {
   const e = menu.entry;
+  const reveal = { key: "reveal", label: t(isMac ? "fe.revealMac" : isWindows ? "fe.revealWindows" : "fe.revealOther"), icon: "folder" };
   if (!e) {
     return [
+      reveal,
       { key: "new-note", label: t("fe.newNote"), icon: "file-plus" },
       { key: "new-canvas", label: t("fe.newCanvas"), icon: "layout-grid" },
       { key: "new-folder", label: t("fe.newFolder"), icon: "folder-plus" },
@@ -96,6 +99,7 @@ const menuItems = computed(() => {
   }
   if (e.is_dir) {
     return [
+      reveal,
       { key: "new-note", label: t("fe.newNote"), icon: "file-plus" },
       { key: "new-canvas", label: t("fe.newCanvas"), icon: "layout-grid" },
       { key: "new-folder", label: t("fe.newFolder"), icon: "folder-plus" },
@@ -109,6 +113,7 @@ const menuItems = computed(() => {
     ];
   }
   const items: DropItem[] = [
+    reveal,
     { key: "copy-full", label: t("fe.copyFullPath"), icon: "copy" },
     { key: "copy-rel", label: t("fe.copyRelPath"), icon: "copy" },
     { key: "sep-p", label: "", separator: true },
@@ -142,6 +147,9 @@ async function onMenuSelect(key: string) {
   menu.visible = false;
   const e = menu.entry;
   switch (key) {
+    case "reveal":
+      try { await api.revealInFileManager(e?.path ?? ""); } catch (err) { alert(String(err)); }
+      break;
     case "new-note":
       ui.openNewNote(e?.is_dir ? e.path : parentOf(e));
       break;

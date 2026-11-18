@@ -18,6 +18,47 @@ fn with_vault<T>(
     }
 }
 
+/// Reveal a vault entry in the platform file manager without invoking a shell.
+#[tauri::command]
+pub fn reveal_in_file_manager(state: State<'_, AppState>, path: String) -> Result<(), String> {
+    let full = with_vault(&state, |vc| {
+        let full = vc.safe_join(&path).map_err(|e| e.to_string())?
+            .canonicalize().map_err(|e| e.to_string())?;
+        let root = vc.root.canonicalize().map_err(|e| e.to_string())?;
+        if !full.starts_with(&root) {
+            return Err("路径超出知识库范围".into());
+        }
+        Ok(full)
+    })?;
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut c = std::process::Command::new("open");
+        c.arg("-R").arg(&full);
+        c
+    };
+    #[cfg(windows)]
+    let mut command = {
+        // Explorer requires /select,<path> as one argument; PathBuf is not shell text.
+        let display = full.to_string_lossy();
+        let path = if let Some(unc) = display.strip_prefix(r"\\?\UNC\") {
+            format!(r"\\{}", unc)
+        } else {
+            display.strip_prefix(r"\\?\").unwrap_or(&display).to_string()
+        };
+        let mut c = std::process::Command::new("explorer.exe");
+        c.arg(format!("/select,{}", path));
+        c
+    };
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let mut command = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(if full.is_dir() { full.as_path() } else { full.parent().unwrap_or(&full) });
+        c
+    };
+    command.spawn().map_err(|e| format!("无法打开文件管理器：{}", e))?;
+    Ok(())
+}
+
 // ---------------- 读写 ----------------
 
 /// 智能解码：BOM 优先 → UTF-8 校验 → GB18030 兜底（中文环境最常见的非 UTF-8 编码）

@@ -95,6 +95,7 @@ pub fn run() {
             commands::fsops::read_external_binary,
             commands::extimg::fetch_external_image,
             commands::fsops::list_all_files_with_mtime,
+            commands::fsops::reveal_in_file_manager,
             commands::fsops::duplicate_file,
             commands::fsops::delete_files,
             commands::ai::ai_chat,

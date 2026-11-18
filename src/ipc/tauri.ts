@@ -104,6 +104,7 @@ export const api = {
     invoke<{ path: string; mtime: number; kind: string }[]>(
       "list_all_files_with_mtime",
     ),
+  revealInFileManager: (path: string) => invoke<void>("reveal_in_file_manager", { path }),
   duplicateFile: (path: string) => invoke<string>("duplicate_file", { path }),
   deleteFiles: (paths: string[]) => invoke<string[]>("delete_files", { paths }),
 
