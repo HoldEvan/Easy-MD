@@ -27,4 +27,24 @@ The workflow retains the existing ad-hoc re-signing step after copying the `.app
 
 ## Running and publishing
 
-`Release builds` runs for a `v*` tag push or by manual dispatch and uploads build artifacts only; it does not create a GitHub Release. The separate `Publish verified release` workflow is the publication step. Review the selected source run and all four expected files before publishing; do not use the existing `v0.4.6` release as a test target.
+`Release builds` runs for a `v*` tag push or by manual dispatch and uploads build artifacts only; it does not create a GitHub Release. The existing `Publish verified release` workflow is a one-off workflow pinned to the already-published `v0.4.6` run. Do not reuse it for these builds: a future release must use a new version/tag and update its source-run and expected-file checks to cover all four packages. Do not overwrite the existing `v0.4.6` release as a test target.
+
+For a local Windows build, run these commands from the repository root in PowerShell:
+
+```powershell
+npm ci
+npm run tauri build -- --ci
+$version = node -p "require('./package.json').version"
+./scripts/package-windows-portable.ps1 -BinaryPath 'src-tauri/target/release/EasyMD.exe' -LicensePath 'LICENSE' -OutputDirectory 'artifacts/portable' -Version $version
+```
+
+If you override `CARGO_TARGET_DIR`, adjust `-BinaryPath` accordingly. The script refuses to overwrite an existing ZIP.
+
+For macOS, build on the matching architecture with the platform overlay:
+
+```bash
+npm ci
+npm run tauri build -- --config src-tauri/tauri.macos.conf.json --ci
+```
+
+The CI matrix uses native Apple Silicon and Intel hosts. Mac `.app` bundles include the license in `Contents/Resources/LICENSE`; Windows installers and Portable ZIPs include it beside the executable. About also embeds the same full license text.
