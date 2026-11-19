@@ -6,12 +6,20 @@ import * as vue from 'vue';
 
 const source = readFileSync(new URL('../src/composables/useImageInsertion.ts', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+const dictionarySource = readFileSync(new URL('../src/i18n/imageUpload.ts', import.meta.url), 'utf8');
+const dictionaryExports = {};
+vm.runInNewContext(ts.transpileModule(dictionarySource, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports: dictionaryExports });
+const dictionary = dictionaryExports.imageUploadMessages;
 function setup(provider = 's3') {
   const mounts = [], unmounts = [], inserted = [], calls = [];
   const editor = vue.reactive({ activePath: 'a.md', openToken: 1 });
   const vault = vue.reactive({ root: '/vault', opened: true });
   const behavior = { provider, failure: false, upload: null, configFailure: false };
+  const locale = vue.ref('zh');
+  const t = key => dictionary[key]?.[locale.value === 'en' ? 1 : 0] ?? key;
+  const tf = (key, vars) => Object.entries(vars).reduce((text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), t(key));
   const mocks = {
+    '../i18n': { t, tf },
     vue: { ...vue, onMounted: f => mounts.push(f), onUnmounted: f => unmounts.push(f) },
     '@tauri-apps/api/core': { isTauri: () => false },
     '@tauri-apps/api/webview': {},
@@ -32,7 +40,7 @@ function setup(provider = 's3') {
     const file = { name: 'a.png', type: 'image/png', size, arrayBuffer: async () => new Uint8Array([1, 2]).buffer };
     queue.paste({ clipboardData: { items: [{ type: file.type, getAsFile: () => file }] }, preventDefault() {}, stopPropagation() {} });
   }
-  return { queue, paste, behavior, calls, inserted, editor, vault, unmounts };
+  return { queue, paste, behavior, calls, inserted, editor, vault, unmounts, locale, tf };
 }
 async function settle() { for (let i = 0; i < 15; i++) await Promise.resolve(); }
 {
@@ -79,4 +87,28 @@ for (const provider of ['s3', 'picgo']) {
   const s = setup(); s.paste(); s.vault.root = '/other'; await settle();
   assert.equal(s.inserted.length, 0); assert.equal(s.calls.filter(c => c[0] === 'upload' || c[0] === 'local').length, 0);
 }
-console.log('Image insertion checks passed: local/S3/PicGo, retry, local fallback, note/vault switch, cancel, 20MiB cap.');
+{
+  const s = setup(); s.editor.activePath = ''; await s.queue.choose();
+  assert.equal(s.queue.notice.value, '请先打开一篇笔记再插入图片');
+  s.locale.value = 'en'; assert.equal(s.queue.notice.value, 'Open a note before inserting images');
+  s.queue.notice.value = ''; assert.equal(s.queue.notice.value, '');
+}
+{
+  const s = setup(); s.paste(20 * 1024 * 1024 + 1); await settle();
+  const job = s.queue.jobs[0];
+  assert.equal(s.tf(job.messageKey, job.messageVars), '图片超过 20 MiB，请缩小后重新选择');
+  s.locale.value = 'en';
+  assert.equal(s.tf(job.messageKey, job.messageVars), 'The image exceeds 20 MiB. Reduce its size and select it again');
+}
+{
+  const s = setup(); s.behavior.failure = true; s.paste(); await settle();
+  assert.equal(s.queue.jobs[0].messageKey, undefined);
+  assert.equal(s.queue.jobs[0].message, 'upload failed');
+  s.locale.value = 'en'; assert.equal(s.queue.jobs[0].message, 'upload failed');
+}
+{
+  const s = setup('local'); s.paste(); await settle();
+  assert.equal(s.queue.notice.value, '已插入图片：a.png');
+  s.locale.value = 'en'; assert.equal(s.queue.notice.value, 'Image inserted: a.png');
+}
+console.log('Image insertion checks passed: local/S3/PicGo, retry, local fallback, note/vault switch, cancel, 20MiB cap, live language switching, raw error preservation.');

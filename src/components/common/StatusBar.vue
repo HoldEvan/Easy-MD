@@ -20,7 +20,7 @@
         v-if="fileEncoding"
         ref="encBtn"
         class="sb-item sb-enc"
-        title="文件编码，点击转换"
+        :title="t('sb.encodingHint')"
         @click="encOpen = !encOpen"
       >
         {{ fileEncoding }}

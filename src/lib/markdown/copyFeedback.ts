@@ -1,3 +1,5 @@
+import { t } from '../../i18n';
+
 const checkIcon = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m20 6-11 11-5-5"/></svg>';
 
 type FeedbackState = {
@@ -22,7 +24,7 @@ export async function copyWithFeedback(button: HTMLButtonElement, copy: () => Pr
   try { copied = await copy(); } catch { /* Report a failed clipboard write below. */ }
   if (request !== state.request) return;
   button.innerHTML = copied ? checkIcon : state.icon;
-  button.title = copied ? '已复制' : '复制失败';
+  button.title = t(copied ? 'md.copied' : 'md.copyFailed');
   button.setAttribute('aria-label', button.title);
   state.timer = setTimeout(() => {
     button.innerHTML = state.icon;

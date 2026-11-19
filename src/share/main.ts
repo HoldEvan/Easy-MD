@@ -6,7 +6,8 @@ import { htmlImages } from './images';
 import { keyboardLabels } from './kbd';
 import { wikiLinks } from './wikiLinks';
 import { codeBlockControls } from './codeBlocks';
-import { copyWithFeedback } from '../lib/markdown/copyFeedback';
+import { copyWithFeedback } from './copyFeedback';
+import { applyLanguage, getLanguage, localize, setLanguage, t, type MessageKey, type ShareLanguage } from './i18n';
 import { decodeURIComponentSafe, encodedPath, resolveVaultPath, safeHref, stripFrontmatter } from './utils';
 import './share.css';
 
@@ -14,7 +15,9 @@ type Entry = { path: string; kind: 'folder' | 'markdown' | 'image' | 'canvas' | 
 type Catalog = { name: string; entries: Entry[]; stats: { files: number; notes: number; folders: number; bytes: number } };
 
 const $ = <T extends HTMLElement>(selector: string): T => document.querySelector(selector) as T;
-const app = { catalog: null as Catalog | null, selected: '', query: '', expanded: new Set<string>(), theme: localStorage.getItem('share-theme') || 'dark', static: document.body.dataset.static === 'true' || new URLSearchParams(location.search).has('static') || location.protocol === 'file:' };
+let theme = 'dark';
+try { theme = localStorage.getItem('share-theme') === 'light' ? 'light' : 'dark'; } catch { /* Storage may be disabled. */ }
+const app = { catalog: null as Catalog | null, selected: '', query: '', expanded: new Set<string>(), theme, static: document.body.dataset.static === 'true' || new URLSearchParams(location.search).has('static') || location.protocol === 'file:' };
 const md = new MarkdownIt({ html: false, linkify: true, breaks: false, typographer: false });
 md.validateLink = (url: string) => safeHref(url) !== null;
 md.use(centerContainers);
@@ -78,12 +81,22 @@ function formatBytes(value: number): string {
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node;
 }
+function ui<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, key: MessageKey, params: Record<string, string | number> = {}): HTMLElementTagNameMap[K] {
+  const node = el(tag, className); localize(node, key, params); return node;
+}
+function errorNode<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, key: 'readError' | 'catalogError', error: unknown): HTMLElementTagNameMap[K] {
+  const node = ui(tag, className, key, { error: error instanceof Error ? error.message : t('unknownError') });
+  if (!(error instanceof Error)) node.dataset.shareUnknownError = 'true';
+  return node;
+}
 function renderStats(): void {
   if (!app.catalog) return;
   const { stats } = app.catalog; const host = $('#stats'); host.replaceChildren();
-  const values: Array<[string, string]> = [['文件', String(stats.files)], ['笔记', String(stats.notes)], ['目录', String(stats.folders)], ['容量', formatBytes(stats.bytes)]];
-  for (const [label, value] of values) { const item = el('div', 'stat'); item.append(el('span', 'stat-label', label), el('strong', 'stat-value', value)); host.append(item); }
-  $('#vault-name').textContent = app.catalog.name || '知识库';
+  const values: Array<[MessageKey, string]> = [['files', String(stats.files)], ['notes', String(stats.notes)], ['folders', String(stats.folders)], ['bytes', formatBytes(stats.bytes)]];
+  for (const [label, value] of values) { const item = el('div', 'stat'); item.append(ui('span', 'stat-label', label), el('strong', 'stat-value', value)); host.append(item); }
+  const name = $('#vault-name');
+  if (app.catalog.name) { name.removeAttribute('data-share-i18n'); name.textContent = app.catalog.name; }
+  else localize(name, 'vault');
   $('#file-count').textContent = String(stats.files);
 }
 function treeData(): Map<string, Entry[]> {
@@ -108,7 +121,7 @@ function renderTree(): void {
       if (!matching(entry)) continue;
       const row = el('button', `tree-row${entry.path === app.selected ? ' active' : ''}`); row.type = 'button'; row.style.paddingLeft = `${10 + depth * 16}px`;
       const isFolder = entry.kind === 'folder'; const children = map.has(entry.path);
-      row.append(el('span', `kind-icon ${entry.kind}`, iconFor(entry)), el('span', 'tree-name', entry.path.split('/').pop() || entry.path));
+      row.append(ui('span', `kind-icon ${entry.kind}`, entry.kind), el('span', 'tree-name', entry.path.split('/').pop() || entry.path));
       if (isFolder) {
         const expanded = app.expanded.has(entry.path) || Boolean(app.query);
         row.setAttribute('aria-expanded', String(expanded));
@@ -127,7 +140,6 @@ function renderTree(): void {
   };
   renderLevel('', 0);
 }
-function iconFor(entry: Entry): string { return entry.kind === 'folder' ? '目录' : entry.kind === 'markdown' ? '笔记' : entry.kind === 'image' ? '图片' : entry.kind === 'canvas' ? '画布' : '文件'; }
 function selectEntry(entry: Entry): void {
   if (location.hash === `#${encodeURIComponent(entry.path)}`) { app.selected = entry.path; renderTree(); void renderFile(entry); return; }
   location.hash = encodeURIComponent(entry.path);
@@ -135,7 +147,7 @@ function selectEntry(entry: Entry): void {
 function selectHash(): void {
   const path = decodeURIComponentSafe(location.hash.slice(1));
   const entry = findEntry(path);
-  if (!entry || entry.kind === 'folder') { app.selected = ''; renderTree(); $('#content').replaceChildren(el('div', 'welcome', '从左侧选择文件开始浏览。')); return; }
+  if (!entry || entry.kind === 'folder') { app.selected = ''; renderTree(); $('#content').replaceChildren(ui('div', 'welcome', 'welcome')); return; }
   app.selected = entry.path;
   let parent = entry.path.split('/').slice(0, -1).join('/');
   while (parent) { app.expanded.add(parent); parent = parent.split('/').slice(0, -1).join('/'); }
@@ -158,14 +170,15 @@ async function copyText(text: string): Promise<boolean> {
 async function renderFile(entry: Entry): Promise<void> {
   const host = $('#content'); host.replaceChildren(); host.scrollTop = 0;
   const head = el('header', 'file-head'); const title = el('h1', 'file-title', entry.path.split('/').pop() || entry.path); const actions = el('div', 'file-actions');
-  const download = el('a', 'download', '下载'); download.href = fileUrl(entry.path); download.download = entry.path.split('/').pop() || 'download';
+  const download = ui('a', 'download', 'download'); download.href = fileUrl(entry.path); download.download = entry.path.split('/').pop() || 'download';
   const crumbsRow = el('div', 'breadcrumbs-row');
   const crumbs = el('div', 'breadcrumbs', entry.path);
   if (entry.modified != null) {
     const date = new Date(entry.modified * 1000);
     if (!Number.isNaN(date.getTime())) {
-      const updated = el('time', 'file-updated', `更新时间：${date.toLocaleString('zh-CN', { hour12: false })}`);
+      const updated = el('time', 'file-updated', t('updated', { date: date.toLocaleString(getLanguage(), { hour12: false }) }));
       updated.dateTime = date.toISOString();
+      updated.dataset.shareDate = 'true';
       crumbsRow.append(crumbs, updated);
     } else crumbsRow.append(crumbs);
   } else crumbsRow.append(crumbs);
@@ -196,36 +209,44 @@ async function renderFile(entry: Entry): Promise<void> {
       const response = await fetch(fileUrl(entry.path)); if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json() as { nodes?: Array<{ id?: string; type?: string; text?: string; file?: string; x?: number; y?: number }> };
       const nodes = data.nodes || [];
-      const summary = el('p', 'canvas-summary', `${nodes.length} 个节点`); body.append(summary);
+      const summary = ui('p', 'canvas-summary', 'nodes', { count: nodes.length }); body.append(summary);
       const list = el('div', 'canvas-nodes');
       for (const [index, node] of nodes.entries()) {
-        const card = el('section', 'canvas-node'); card.append(el('strong', 'canvas-index', `${index + 1} · ${node.type || '文本'}`));
+        const card = el('section', 'canvas-node');
+        const indexLabel = el('strong', 'canvas-index');
+        indexLabel.append(document.createTextNode(`${index + 1} · `), node.type ? document.createTextNode(node.type) : ui('span', '', 'text'));
+        card.append(indexLabel);
         if (node.text) card.append(el('p', '', node.text));
         if (node.file) { const targetPath = resolveVaultPath(node.file, entry.path); const target = findEntry(targetPath); if (target) { const link = el('button', 'canvas-link', target.path); link.type = 'button'; link.addEventListener('click', () => selectEntry(target)); card.append(link); } else card.append(el('span', 'canvas-file', node.file)); }
         list.append(card);
       }
       body.append(list);
     } else {
-      const note = el('p', 'file-download-note', '此文件类型不支持在线预览。'); body.append(note);
+      const note = ui('p', 'file-download-note', 'noPreview'); body.append(note);
     }
-  } catch (error) { body.replaceChildren(el('p', 'error', `读取失败：${error instanceof Error ? error.message : '未知错误'}`)); }
+  } catch (error) { body.replaceChildren(errorNode('p', 'error', 'readError', error)); }
 }
 async function init(): Promise<void> {
   document.documentElement.dataset.theme = app.theme;
+  applyLanguage();
+  $('#language-select').addEventListener('change', event => {
+    setLanguage((event.target as HTMLSelectElement).value as ShareLanguage);
+    applyLanguage();
+  });
   try {
     const catalogUrl = app.static ? 'catalog.json' : '/api/catalog';
     const response = await fetch(catalogUrl); if (!response.ok) throw new Error(`HTTP ${response.status}`);
     app.catalog = await response.json() as Catalog; renderStats(); renderTree();
     if (location.hash) selectHash();
     window.addEventListener('hashchange', selectHash);
-  } catch (error) { const host = $('#content'); host.replaceChildren(el('div', 'error-state', `无法载入知识库目录：${error instanceof Error ? error.message : '未知错误'}`)); }
+  } catch (error) { const host = $('#content'); host.replaceChildren(errorNode('div', 'error-state', 'catalogError', error)); }
   $('#search').addEventListener('input', (event) => { app.query = (event.target as HTMLInputElement).value.trim(); renderTree(); });
-  $('#theme-toggle').addEventListener('click', () => { app.theme = app.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = app.theme; localStorage.setItem('share-theme', app.theme); });
+  $('#theme-toggle').addEventListener('click', () => { app.theme = app.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = app.theme; try { localStorage.setItem('share-theme', app.theme); } catch { /* Theme still works for this page. */ } });
   const readingMode = $('#reading-mode');
   readingMode.addEventListener('click', () => {
     const enabled = document.body.classList.toggle('reading-mode');
     readingMode.setAttribute('aria-pressed', String(enabled));
-    readingMode.textContent = enabled ? '退出阅读' : '阅读模式';
+    localize(readingMode, enabled ? 'exitReading' : 'reading');
   });
 }
 void init();

@@ -9,18 +9,18 @@
 <body>
   <div id="app">
     <header class="topbar">
-      <div class="brand"><span id="vault-name">知识库</span></div>
-      <div class="toolbar"><button id="theme-toggle" type="button">切换主题</button><button id="reading-mode" type="button" aria-pressed="false">阅读模式</button></div>
+      <div class="brand"><span id="vault-name" data-share-i18n="vault">知识库</span></div>
+      <div class="toolbar"><label class="language-picker"><span data-share-i18n="language">语言</span><select id="language-select" aria-label="语言" data-share-i18n-aria-label="language"><option value="zh-CN">简体中文</option><option value="en">English</option></select></label><button data-share-i18n="theme" id="theme-toggle" type="button">切换主题</button><button data-share-i18n="reading" id="reading-mode" type="button" aria-pressed="false">阅读模式</button></div>
     </header>
     <main class="layout">
-      <aside class="sidebar" aria-label="文件导航">
+      <aside class="sidebar" aria-label="文件导航" data-share-i18n-aria-label="navigation">
         <section class="stats" id="stats"></section>
-        <label class="search"><span aria-hidden="true">筛选</span><input id="search" type="search" placeholder="输入名称" autocomplete="off"></label>
-        <div class="tree-title"><span>文件</span><span id="file-count"></span></div>
-        <nav id="tree" class="tree" aria-label="文件树"></nav>
+        <label class="search"><span data-share-i18n="filter">筛选</span><input id="search" type="search" placeholder="输入名称" data-share-i18n-placeholder="search" autocomplete="off"></label>
+        <div class="tree-title"><span data-share-i18n="files">文件</span><span id="file-count"></span></div>
+        <nav id="tree" class="tree" aria-label="文件树" data-share-i18n-aria-label="tree"></nav>
       </aside>
       <section class="content" id="content" aria-live="polite">
-        <div class="welcome"><h1>知识库分享</h1><p>从左侧选择文件开始浏览。</p></div>
+        <div class="welcome"><h1 data-share-i18n="title">知识库分享</h1><p data-share-i18n="welcome">从左侧选择文件开始浏览。</p></div>
       </section>
     </main>
   </div>

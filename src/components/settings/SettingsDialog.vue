@@ -218,7 +218,7 @@ const fontScales = [
 const tabs = computed(() => [
   { key: "general", label: t("st.general") },
   { key: "templates", label: t("st.templates") },
-  { key: "image-upload", label: "图片上传" },
+  { key: "image-upload", label: t("st.imageUpload") },
   { key: "ai", label: t("st.ai") },
   { key: "appearance", label: t("st.appearance") },
   { key: "mcp", label: t("st.mcp") },

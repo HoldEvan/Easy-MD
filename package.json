@@ -8,6 +8,7 @@
     "build": "npm run build:share && vue-tsc --noEmit && vite build",
     "build:share": "node scripts/build-share.mjs",
     "test:share": "node scripts/test-share.mjs",
+    "test:i18n": "node scripts/test-i18n.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "icon": "node scripts/make_icon.mjs && tauri icon src-tauri/app-icon.png"

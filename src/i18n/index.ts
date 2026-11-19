@@ -1,11 +1,17 @@
 // 轻量双语 i18n：单文件字典 key: [中文, English]，零依赖，切换立即生效
 import { ref } from "vue";
 import { platformText } from "../lib/platform";
+import { shareMessages } from "./share";
+import { imageUploadMessages } from "./imageUpload";
+import { graphMessages } from "./graph";
 
 export type Lang = "zh" | "en";
 
 /** 每个键: [中文, 美式英语] */
 const dict: Record<string, [string, string]> = {
+  ...shareMessages,
+  ...imageUploadMessages,
+  ...graphMessages,
   // ---- 通用 ----
   "c.cancel": ["取消", "Cancel"],
   "c.confirm": ["确定", "OK"],
@@ -29,6 +35,7 @@ const dict: Record<string, [string, string]> = {
   "jot.timeline": ["时间线", "Timeline"],
   "jot.empty": ["还没有小计\n点 Ribbon 的“小计”按钮开始记录", "No jots yet\nClick the Jot button to start"],
   "jot.newJot": ["新建小计", "New jot"],
+  "jot.open": ["打开小计", "Open jot"],
   "jot.placeholder": ["记录想法…（可直接粘贴图片）", "Jot down ideas… (images paste supported)"],
   "jot.batchDelConfirm": ["删除 {n} 条小计？", "Delete {n} jots?"],
   "tag.matchNotes": ["使用了 #{} 标签的笔记", "Notes tagged #{}"],
@@ -314,7 +321,15 @@ const dict: Record<string, [string, string]> = {
   "st.about.license": ["许可证", "License"],
   "st.about.copy": ["复制", "Copy"],
   "st.about.copied": ["已复制", "Copied"],
-  "st.about.tip": ["发现问题或有好想法？欢迎邮件联系作者。", "Found a problem or have an idea? Feel free to email the author."],
+  "st.about.tip": ["此 Fork 的问题反馈与建议请联系维护者 HoldEvan。", "For feedback and suggestions about this fork, contact its maintainer HoldEvan."],
+  "st.about.forkSection": ["Fork 维护", "Fork maintenance"],
+  "st.about.maintainer": ["Fork 维护者", "Fork maintainer"],
+  "st.about.upstreamSection": ["原项目与许可", "Original project and license"],
+  "st.about.originalAuthor": ["原作者", "Original author"],
+  "st.about.originalEmail": ["原作者邮箱", "Original author email"],
+  "st.about.upstreamRepo": ["上游仓库", "Upstream repository"],
+  "st.about.forkNotice": ["本版本基于 FortC/Easy-MD 修改，由 HoldEvan 维护。保留原项目版权与 MIT 许可声明；修改部分同样采用 MIT 许可。", "This version is based on FortC/Easy-MD and maintained by HoldEvan. The original copyright and MIT license notices are retained; modifications are also licensed under MIT."],
+  "st.about.licenseText": ["查看完整 MIT 许可证", "View full MIT license"],
   "st.fontSize": ["字体大小", "Font size"],
   "st.fsXs": ["小", "S"],
   "st.fsSm": ["偏小", "M-"],

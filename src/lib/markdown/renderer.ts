@@ -294,7 +294,7 @@ md.renderer.renderToken = function (tokens, idx, options) {
 const fenceOrig = md.renderer.rules.fence;
 function codeBlockToolbar(language: string, attrs = ""): string {
   const label = `<span class="md-code-language">${escHtml(language || "text")}</span>`;
-  const toolbar = `<div class="md-code-toolbar">${label}<button type="button" class="md-code-copy" aria-label="复制代码" title="复制代码"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg></button></div>`;
+  const toolbar = `<div class="md-code-toolbar">${label}<button type="button" class="md-code-copy" aria-label="${md.utils.escapeHtml(t('md.copyCode'))}" title="${md.utils.escapeHtml(t('md.copyCode'))}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg></button></div>`;
   return `<pre${attrs}>${toolbar}`;
 }
 md.renderer.rules.fence = (tokens, idx, options, env, self) => {

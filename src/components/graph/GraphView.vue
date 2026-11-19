@@ -72,10 +72,10 @@
         <template v-else>
           <div class="gv-sep" />
           <label class="gv-check">
-            <input v-model="localOnly" type="checkbox" :disabled="!editor.activePath" /> 当前笔记
+            <input v-model="localOnly" type="checkbox" :disabled="!editor.activePath" /> {{ t("graph.currentNote") }}
           </label>
-          <select v-if="localOnly" v-model.number="localDepth" aria-label="关系层数">
-            <option v-for="depth in 3" :key="depth" :value="depth">{{ depth }} 层</option>
+          <select v-if="localOnly" v-model.number="localDepth" :aria-label="t('graph.relationDepth')">
+            <option v-for="depth in 3" :key="depth" :value="depth">{{ tf("graph.depth", { n: depth }) }}</option>
           </select>
           <label class="gv-check">
             <input v-model="showOrphans" type="checkbox" /> {{ t("gf.orphans") }}
@@ -89,10 +89,10 @@
         </template>
 
         <form class="gv-search" @submit.prevent="locateNode">
-          <input v-model="searchQuery" aria-label="搜索节点" placeholder="搜索节点" @input="searchIndex = 0" />
-          <button class="emd-btn" :disabled="!searchMatches.length" type="submit">定位<span v-if="searchQuery">（{{ searchMatches.length }}）</span></button>
+          <input v-model="searchQuery" :aria-label="t('graph.searchNodes')" :placeholder="t('graph.searchNodes')" @input="searchIndex = 0" />
+          <button class="emd-btn" :disabled="!searchMatches.length" type="submit">{{ searchQuery ? tf("graph.locateCount", { n: searchMatches.length }) : t("graph.locate") }}</button>
         </form>
-        <button class="emd-btn" title="适配全部节点" @click="fitGraph">全图适配</button>
+        <button class="emd-btn" :title="t('graph.fitAllTitle')" @click="fitGraph">{{ t("graph.fitAll") }}</button>
         <span class="gv-count">{{ tf("gf.counts", { n: nodesCount, m: linksCount }) }}</span>
         <button class="emd-btn" :title="t('gf.relayout')" @click="reheat">
           <Icon name="refresh-cw" :size="12" />
@@ -501,7 +501,7 @@ function reheat() {
 async function openNote(path: string) {
   await flushSave();
   try { await editor.openNote(path); ui.view = "editor"; }
-  catch (e) { graphError.value = `无法打开笔记：${e}`; }
+  catch (e) { graphError.value = tf("graph.openNoteFailed", { error: String(e) }); }
 }
 
 function closeGraph() {
@@ -546,7 +546,7 @@ async function loadDoc(silent = false) {
       || parsed.nodes.some(n => !n || typeof n.id !== "string" || typeof n.label !== "string")
       || new Set(parsed.nodes.map(n => n.id)).size !== parsed.nodes.length
       || parsed.edges.some(e => !e || typeof e.source !== "string" || typeof e.target !== "string")) {
-      throw new Error("图谱数据格式无效");
+      throw new Error(t("graph.invalidData"));
     }
     if (disposed || revision !== loadRevision || path !== ui.graphPath) return;
     docPath = path;
