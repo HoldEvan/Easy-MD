@@ -84,8 +84,8 @@ Mac 的功能键若默认控制系统功能，需同时按 `Fn`（例如 `Fn+⌘
 
 ### 快速上手
 
-1. Windows 需要 WebView2 运行时；macOS 使用系统 WebView。当前验证过的 Mac 安装包为 Apple Silicon（M 系列）。
-2. Windows 使用安装包或绿色版 exe；macOS 打开 DMG，将 EasyMD 拖入 Applications。可查看 [Releases](https://github.com/FortC/Easy-MD/releases) 中实际提供的产物，或按下文自行构建。
+1. Windows 需要 WebView2 运行时；macOS 使用系统 WebView。
+2. Windows 可选择安装程序或 Portable ZIP（解压后运行 `EasyMD.exe`，配置仍保存于系统用户目录）；macOS 按 Apple Silicon（`aarch64`，M 系列）或 Intel（`x64`）选择 DMG，将 EasyMD 拖入 Applications。请以 [本 Fork 的 Releases](https://github.com/HoldEvan/Easy-MD/releases) 中实际提供的产物为准；已有版本不会因构建配置更新而自动增加安装包。
 3. 首次启动选择「打开知识库文件夹」，指向任意一个存放 md 文件的目录即可。
 4. 想先看看效果？本仓库自带一个演示库 [docs/demo-vault](docs/demo-vault)，用 EasyMD 打开这个文件夹就能体验全部功能。
 
@@ -114,7 +114,7 @@ npm run tauri dev -- --config src-tauri/tauri.macos.conf.json
 npm run tauri build -- --config src-tauri/tauri.macos.conf.json
 ```
 
-构建默认使用本机架构；Apple Silicon 上生成 arm64 包。Intel / Universal 包需要相应 Rust target 和单独构建验证，目前未作为已验收产物提供。
+构建默认使用本机架构；CI 分别在 Apple Silicon 与 Intel runner 上生成 `aarch64` / `x64` DMG，Windows 构建同时生成 NSIS 安装程序和 Portable ZIP。具体命令、产物及验证方法见 [打包说明](docs/packaging.md)。未提供 Universal 单包。
 
 默认产物（`<version>` 为当前版本，`<arch>` 为目标架构）：
 
@@ -122,7 +122,8 @@ npm run tauri build -- --config src-tauri/tauri.macos.conf.json
 src-tauri/target/release/EasyMD.exe
 src-tauri/target/release/bundle/nsis/EasyMD_<version>_<arch>-setup.exe
 src-tauri/target/release/bundle/macos/EasyMD.app
-src-tauri/target/release/bundle/dmg/EasyMD_<version>_aarch64.dmg
+src-tauri/target/release/bundle/dmg/EasyMD_<version>_<arch>.dmg
+artifacts/portable/EasyMD_<version>_x64-portable.zip
 ```
 
 如需将缓存和 Rust 产物放在项目内，可在 macOS 项目根目录执行：
@@ -180,9 +181,11 @@ src-tauri/src/      Rust 后端
 
 同步前请在 设置 → 云同步 添加 MCP 服务（command / args / env，与常见 MCP 客户端配置一致），点「测试连接」确认工具可用。软件按工具名自动绑定 列表 / 下载 / 上传 / 删除 操作（可在配置中手动指定）。同步策略：双向新增 / 更新（内容不同时较新者胜，云端无 mtime 时本地优先）；**不自动传播删除**以防误删，删除请在两侧手动操作。
 
-### 许可证
+### Fork 维护与许可证
 
-[MIT](LICENSE)
+本仓库基于 [FortC/Easy-MD](https://github.com/FortC/Easy-MD) 修改。原作者为 clb（FortC），原作者邮箱为 `lamthebest@foxmail.com`；本 Fork 由 **HoldEvan** 维护，联系邮箱 `java_lyf@163.com`，仓库为 [HoldEvan/Easy-MD](https://github.com/HoldEvan/Easy-MD)。
+
+沿用 [MIT](LICENSE) 许可，保留 `Copyright (c) 2026 FortC` 及完整许可和免责条款；仅为本 Fork 的修改新增 HoldEvan 版权声明。关于页可展开查看完整许可，安装包和 Portable ZIP 同样携带许可证。
 
 ---
 
@@ -242,8 +245,8 @@ On Macs using media keys, also hold `Fn`, or enable standard F1–F12 keys in sy
 
 ### Getting started
 
-1. Windows requires WebView2; macOS uses its system WebView. Mac packages have been verified on Apple Silicon.
-2. Use a Windows installer / portable exe, or open the macOS DMG and drag EasyMD into Applications. Check [Releases](https://github.com/FortC/Easy-MD/releases) for available artifacts, or build below.
+1. Windows requires WebView2; macOS uses its system WebView.
+2. Choose the Windows installer or Portable ZIP (extract and run `EasyMD.exe`; settings remain in the user profile), or choose the Apple Silicon (`aarch64`) / Intel (`x64`) Mac DMG and drag EasyMD into Applications. Check [this fork's Releases](https://github.com/HoldEvan/Easy-MD/releases) for actual availability; changing build configuration does not add assets to older releases.
 3. On first launch, choose "Open vault folder" and point it at any folder of markdown files.
 4. Want a quick tour? The repo ships a demo vault at [docs/demo-vault](docs/demo-vault) — open that folder with EasyMD and try everything.
 
@@ -267,10 +270,11 @@ Default artifacts:
 src-tauri/target/release/EasyMD.exe
 src-tauri/target/release/bundle/nsis/EasyMD_<version>_<arch>-setup.exe
 src-tauri/target/release/bundle/macos/EasyMD.app
-src-tauri/target/release/bundle/dmg/EasyMD_<version>_aarch64.dmg
+src-tauri/target/release/bundle/dmg/EasyMD_<version>_<arch>.dmg
+artifacts/portable/EasyMD_<version>_x64-portable.zip
 ```
 
-Builds target the host architecture by default. Apple Silicon produces arm64 packages; Intel / Universal builds need the relevant Rust targets and separate validation. Local builds are not configured for Developer ID signing or Apple notarization; configure both for public distribution.
+Builds target the host architecture by default. CI builds separate Apple Silicon and Intel DMGs on matching runners, plus Windows NSIS and Portable ZIP packages. See [packaging instructions](docs/packaging.md) for commands and validation. No Universal package is provided. Local builds are not configured for Developer ID signing or Apple notarization; configure both for public distribution.
 
 Optional project-local caches and build directory on macOS:
 
@@ -325,6 +329,8 @@ src-tauri/src/      Rust backend
 
 Add an MCP service under Settings → Cloud Sync (command / args / env, same shape as common MCP client configs) and hit "Test connection" to verify the tools. EasyMD binds list / download / upload / delete operations by tool name (manually overridable). Sync strategy: two-way for additions and updates (newest wins; local wins when the cloud lacks mtime); **deletions are never propagated automatically** — delete on both sides manually on purpose.
 
-### License
+### Fork maintenance and license
 
-[MIT](LICENSE)
+Based on [FortC/Easy-MD](https://github.com/FortC/Easy-MD), originally authored by clb (FortC), `lamthebest@foxmail.com`. This fork is maintained by **HoldEvan**, `java_lyf@163.com`, at [HoldEvan/Easy-MD](https://github.com/HoldEvan/Easy-MD).
+
+Licensed under [MIT](LICENSE). The original `Copyright (c) 2026 FortC`, permission notice and disclaimer are retained; HoldEvan's copyright notice covers fork modifications. The complete license is available in About and included in installers and Portable ZIP packages.
