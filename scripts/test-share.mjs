@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { transform } from 'esbuild';
+import { build, transform } from 'esbuild';
+async function importShareModule(name) {
+  const result = await build({ entryPoints: [new URL(`../src/share/${name}.ts`, import.meta.url).pathname], bundle: true, platform: 'node', format: 'esm', write: false });
+  return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].contents).toString('base64')}`);
+}
 const source = await readFile(new URL('../src/share/utils.ts', import.meta.url), 'utf8');
 const { code } = await transform(source, { loader: 'ts', format: 'esm' });
 const { encodedPath, resolveVaultPath, safeHref, stripFrontmatter } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
@@ -20,18 +24,14 @@ const { default: MarkdownIt } = await import('markdown-it');
 const centerSource = await readFile(new URL('../src/share/center.ts', import.meta.url), 'utf8');
 const centerCode = await transform(centerSource, { loader: 'ts', format: 'esm' });
 const { centerContainers } = await import(`data:text/javascript;base64,${Buffer.from(centerCode.code).toString('base64')}`);
-const blocksSource = await readFile(new URL('../src/share/codeBlocks.ts', import.meta.url), 'utf8');
-const blocksCode = await transform(blocksSource, { loader: 'ts', format: 'esm' });
-const { codeBlockControls } = await import(`data:text/javascript;base64,${Buffer.from(blocksCode.code).toString('base64')}`);
+const { codeBlockControls } = await importShareModule('codeBlocks');
 const imagesSource = await readFile(new URL('../src/share/images.ts', import.meta.url), 'utf8');
 const imagesCode = await transform(imagesSource, { loader: 'ts', format: 'esm' });
 const { htmlImages } = await import(`data:text/javascript;base64,${Buffer.from(imagesCode.code).toString('base64')}`);
 const kbdSource = await readFile(new URL('../src/share/kbd.ts', import.meta.url), 'utf8');
 const kbdCode = await transform(kbdSource, { loader: 'ts', format: 'esm' });
 const { keyboardLabels } = await import(`data:text/javascript;base64,${Buffer.from(kbdCode.code).toString('base64')}`);
-const wikiSource = await readFile(new URL('../src/share/wikiLinks.ts', import.meta.url), 'utf8');
-const wikiCode = await transform(wikiSource, { loader: 'ts', format: 'esm' });
-const { wikiLinks, resolveWikiNote } = await import(`data:text/javascript;base64,${Buffer.from(wikiCode.code).toString('base64')}`);
+const { wikiLinks, resolveWikiNote } = await importShareModule('wikiLinks');
 const md = new MarkdownIt({ html: false }).use(centerContainers).use(codeBlockControls).use(htmlImages).use(keyboardLabels).use(wikiLinks);
 const wikiEnv = { notePaths: ['目录/笔记.md', 'Other.md'] };
 assert.equal(resolveWikiNote('笔记', wikiEnv.notePaths), '目录/笔记.md');

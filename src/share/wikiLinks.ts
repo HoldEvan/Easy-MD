@@ -1,4 +1,5 @@
 import type MarkdownIt from 'markdown-it';
+import { t } from './i18n';
 
 /** Resolve against the public catalog only, including filename-only wiki links. */
 export function resolveWikiNote(target: string, paths: string[]): string | null {
@@ -34,6 +35,6 @@ export function wikiLinks(md: MarkdownIt): void {
     const text = md.utils.escapeHtml(label);
     return path
       ? `<a class="vault-link" href="#${encodeURIComponent(path)}">${text}</a>`
-      : `<span class="wiki-unresolved" title="未找到笔记">${text}</span>`;
+      : `<span class="wiki-unresolved" data-share-i18n-title="noteMissing" title="${t('noteMissing')}">${text}</span>`;
   };
 }

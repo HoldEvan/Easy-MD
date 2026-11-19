@@ -2,36 +2,36 @@
   <Teleport to="body">
     <div class="emd-modal-bg" @click.self="close" @keydown.esc.stop="close">
       <section class="emd-modal share-dialog" role="dialog" aria-modal="true" aria-labelledby="share-title" tabindex="-1" ref="dialogEl" @keydown.tab="trapFocus">
-        <h2 id="share-title">分享知识库</h2>
-        <p class="share-help">分享已保存的笔记和附件（不含画布），退出 EasyMD 后停止服务。</p>
+        <h2 id="share-title">{{ t('share.title') }}</h2>
+        <p class="share-help">{{ t('share.help') }}</p>
         <form @submit.prevent="start">
           <div class="share-fields">
-          <label>端口<input v-model.number="port" type="number" min="1" max="65535" required :disabled="busy || status.running" /></label>
-          <label>访问密码<input v-model="password" type="password" autocomplete="new-password" placeholder="留空则无需密码" :disabled="busy || status.running" /></label>
+          <label>{{ t('share.port') }}<input v-model.number="port" type="number" min="1" max="65535" required :disabled="busy || status.running" /></label>
+          <label>{{ t('share.password') }}<input v-model="password" type="password" autocomplete="new-password" :placeholder="t('share.passwordHint')" :disabled="busy || status.running" /></label>
           </div>
-          <p class="share-help">访客只需输入分享密码。此服务使用 HTTP，适合可信局域网。</p>
+          <p class="share-help">{{ t('share.httpHint') }}</p>
           <div class="share-status" aria-live="polite">
-            <strong>{{ status.running ? `正在分享：${status.vaultName}` : '服务未启动' }}</strong>
+            <strong>{{ status.running ? tf('share.running', { name: status.vaultName ?? '' }) : t('share.stopped') }}</strong>
             <div v-for="url in status.urls" :key="url" class="share-url">
-              <input :value="url" readonly aria-label="分享地址" @focus="($event.target as HTMLInputElement).select()" />
-              <button class="emd-btn" type="button" @click="copy(url)">复制地址</button>
-              <button class="emd-btn" type="button" @click="open(url)">打开</button>
+              <input :value="url" readonly :aria-label="t('share.address')" @focus="($event.target as HTMLInputElement).select()" />
+              <button class="emd-btn" type="button" @click="copy(url)">{{ t('share.copy') }}</button>
+              <button class="emd-btn" type="button" @click="open(url)">{{ t('share.open') }}</button>
             </div>
             <div v-if="status.running && lanUrls.length" class="share-qr">
-              <label v-if="lanUrls.length > 1">扫码地址<select v-model="qrUrl"><option v-for="url in lanUrls" :key="url" :value="url">{{ url }}</option></select></label>
-              <img v-if="qrImage" :src="qrImage" width="128" height="128" alt="局域网分享地址二维码" />
-              <p class="share-help">手机连接同一网络后扫码打开<br />{{ qrUrl }}</p>
+              <label v-if="lanUrls.length > 1">{{ t('share.qrAddress') }}<select v-model="qrUrl"><option v-for="url in lanUrls" :key="url" :value="url">{{ url }}</option></select></label>
+              <img v-if="qrImage" :src="qrImage" width="128" height="128" :alt="t('share.qrAlt')" />
+              <p class="share-help">{{ t('share.qrHint') }}<br />{{ qrUrl }}</p>
             </div>
-            <p v-else-if="status.running" class="share-help">未检测到局域网地址，连接 Wi-Fi 或有线网络后重新启动分享。</p>
-            <p v-if="status.running" class="share-help">目录覆盖启动时的知识库。切换知识库后，请先停止，再重新启动。</p>
+            <p v-else-if="status.running" class="share-help">{{ t('share.noLan') }}</p>
+            <p v-if="status.running" class="share-help">{{ t('share.vaultHint') }}</p>
             <p v-if="message">{{ message }}</p>
           </div>
           <p v-if="error" class="share-error" role="alert">{{ error }}</p>
           <div class="share-actions">
-            <button type="button" class="emd-btn" :disabled="busy || loading" @click="exportStatic">导出 ZIP 部署包</button>
-            <button type="button" class="emd-btn" :disabled="busy" @click="close">关闭窗口</button>
-            <button v-if="status.running" type="button" class="emd-btn" :disabled="busy" @click="stop">{{ busy ? '正在停止…' : '停止分享' }}</button>
-            <button v-else class="emd-btn emd-btn-accent" :disabled="busy || loading" type="submit">{{ busy ? '正在启动…' : '启动分享' }}</button>
+            <button type="button" class="emd-btn" :disabled="busy || loading" @click="exportStatic">{{ t('share.export') }}</button>
+            <button type="button" class="emd-btn" :disabled="busy" @click="close">{{ t('share.close') }}</button>
+            <button v-if="status.running" type="button" class="emd-btn" :disabled="busy" @click="stop">{{ busy ? t('share.stopping') : t('share.stop') }}</button>
+            <button v-else class="emd-btn emd-btn-accent" :disabled="busy || loading" type="submit">{{ busy ? t('share.starting') : t('share.start') }}</button>
           </div>
         </form>
       </section>
@@ -44,6 +44,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import QRCode from 'qrcode';
 import { save } from '@tauri-apps/plugin-dialog';
 import { api, type ShareStatus } from '../../ipc/tauri';
+import { t, tf } from '../../i18n';
 import { useEditorStore } from '../../stores/editor';
 const emit = defineEmits<{ close: [] }>();
 const editor = useEditorStore();
@@ -61,7 +62,7 @@ watch(qrUrl, async url => {
   try {
     const image = await QRCode.toDataURL(url, { width: 224, margin: 4, errorCorrectionLevel: 'M' });
     if (qrUrl.value === url) qrImage.value = image;
-  } catch (e) { error.value = `二维码生成失败：${e}`; }
+  } catch (e) { error.value = tf('share.qrError', { error: String(e) }); }
 });
 const port = ref(80);
 const password = ref('');
@@ -90,13 +91,13 @@ onMounted(async () => {
 });
 onUnmounted(() => previousFocus?.focus());
 async function start() {
-  if (!Number.isInteger(port.value) || port.value < 1 || port.value > 65535) { error.value = '端口必须是 1 到 65535 之间的整数'; return; }
+  if (!Number.isInteger(port.value) || port.value < 1 || port.value > 65535) { error.value = t('share.portError'); return; }
   busy.value = true; error.value = ''; message.value = '';
   try {
     if (editor.isDirty) await editor.save();
     status.value = await api.shareStart(port.value, password.value);
     password.value = '';
-  } catch (e) { error.value = `${e}。端口被占用或没有权限时，可改用 8080 等端口。`; }
+  } catch (e) { error.value = tf('share.startError', { error: String(e) }); }
   finally { busy.value = false; }
 }
 async function stop() {
@@ -108,24 +109,24 @@ async function stop() {
 async function open(url: string) {
   error.value = '';
   try { await api.openExternalUrl(url); }
-  catch (e) { error.value = `无法打开浏览器：${e}`; }
+  catch (e) { error.value = tf('share.openError', { error: String(e) }); }
 }
 async function exportStatic() {
   busy.value = true; error.value = ''; message.value = '';
   try {
     const destination = await save({
       defaultPath: 'EasyMD-Share.zip',
-      filters: [{ name: 'ZIP 部署包', extensions: ['zip'] }],
+      filters: [{ name: t('share.zipFilter'), extensions: ['zip'] }],
     });
     if (!destination) return;
     await api.shareExportStatic(destination);
-    message.value = '部署包已导出，可交给 NGINX 部署';
-  } catch (e) { error.value = `导出失败：${e}`; }
+    message.value = t('share.exported');
+  } catch (e) { error.value = tf('share.exportError', { error: String(e) }); }
   finally { busy.value = false; }
 }
 async function copy(url: string) {
-  try { await navigator.clipboard.writeText(url); message.value = '地址已复制'; }
-  catch { error.value = '复制失败，请选中地址手动复制'; }
+  try { await navigator.clipboard.writeText(url); message.value = t('share.copied'); }
+  catch { error.value = t('share.copyError'); }
 }
 </script>
 
@@ -142,7 +143,8 @@ input { width: 100%; box-sizing: border-box; }
 .share-qr { margin-top: 10px; display: grid; grid-template-columns: 128px minmax(0, 1fr); align-items: center; gap: 10px; }
 .share-qr label { grid-column: 1 / -1; }
 .share-qr img { display: block; margin: 0 auto; }
-.share-qr select { max-width: 100%; }
+.share-qr select { width: 100%; min-width: 0; box-sizing: border-box; height: var(--input-height); padding: 0 8px; font: inherit; color: var(--text-normal); background: var(--background-primary); border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); }
+.share-qr select:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
 .share-qr .share-help { overflow-wrap: anywhere; }
 .share-error { color: var(--text-error, var(--text-normal)); overflow-wrap: anywhere; }
 .share-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; flex-wrap: wrap; }

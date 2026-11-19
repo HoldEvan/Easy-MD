@@ -22,9 +22,9 @@
     <div class="st-row">
       <label>{{ t("ai.model") }}</label>
       <input v-model="settings.data.ai_model" type="text" :placeholder="modelPlaceholder" @change="persist" />
-      <button ref="modelButton" class="emd-btn" :disabled="loadingModels" @click="fetchModels">{{ loadingModels ? '正在检索…' : '检索模型' }}</button>
+      <button ref="modelButton" class="emd-btn" :disabled="loadingModels" @click="fetchModels">{{ loadingModels ? t('ai.fetchingModels') : t('ai.fetchModels') }}</button>
     </div>
-    <DropdownMenu max-height="min(360px, calc(100vh - 32px))" :open="modelsOpen" :anchor="modelButton" :items="modelItems" title="选择模型" align="right" @select="selectModel" @close="modelsOpen = false" />
+    <DropdownMenu max-height="min(360px, calc(100vh - 32px))" :open="modelsOpen" :anchor="modelButton" :items="modelItems" :title="t('ai.chooseModel')" align="right" @select="selectModel" @close="modelsOpen = false" />
     <p v-if="modelError" class="ai-error" role="alert">{{ modelError }}</p>
     <p v-if="modelStatus" class="st-tip" role="status">{{ modelStatus }}</p>
     <div class="st-row st-actions-row">
@@ -48,7 +48,7 @@ import Icon from "../common/Icon.vue";
 import DropdownMenu from "../common/DropdownMenu.vue";
 import { useSettingsStore } from "../../stores/settings";
 import { api } from "../../ipc/tauri";
-import { t } from "../../i18n";
+import { t, tf } from "../../i18n";
 
 const settings = useSettingsStore();
 const testing = ref(false);
@@ -60,7 +60,7 @@ const loadingModels = ref(false);
 const modelError = ref("");
 const modelStatus = ref("");
 let modelRequest = 0;
-const modelItems = computed(() => models.value.map(model => ({ key: model, label: model, hint: model === settings.data.ai_model ? "当前" : undefined })));
+const modelItems = computed(() => models.value.map(model => ({ key: model, label: model, hint: model === settings.data.ai_model ? t("ai.currentModel") : undefined })));
 
 watch(() => [settings.data.ai_provider, settings.data.ai_base_url, settings.data.ai_api_key], () => {
   modelRequest++;
@@ -83,9 +83,9 @@ async function fetchModels() {
     if (request !== modelRequest) return;
     models.value = result;
     modelsOpen.value = result.length > 0;
-    modelStatus.value = result.length ? "" : "服务未返回可用模型，可以手动填写模型名称。";
+    modelStatus.value = result.length ? "" : t("ai.noModels");
   } catch (error) {
-    if (request === modelRequest) modelError.value = `模型检索失败：${String(error)}。也可以手动填写模型名称。`;
+    if (request === modelRequest) modelError.value = tf("ai.modelsError", { error: String(error) });
   } finally {
     if (request === modelRequest) loadingModels.value = false;
   }
@@ -96,7 +96,7 @@ async function selectModel(model: string) {
   settings.data.ai_model = model;
   testOk.value = false;
   try { await persist(); }
-  catch { modelError.value = "模型已选择，但保存设置失败，请重试。"; }
+  catch { modelError.value = t("ai.modelSaveError"); }
 }
 
 const modelPlaceholder = computed(() =>
@@ -120,7 +120,7 @@ async function test() {
   testing.value = true;
   testOk.value = false;
   try {
-    const r = await api.aiChat("请只回复两个字：正常", "这是连通性测试。");
+    const r = await api.aiChat(t("ai.testPrompt"), t("ai.testSystem"));
     testOk.value = r.trim().length > 0;
     alert(`${t("ai.reply")}${r.slice(0, 100)}`);
   } catch (e) {

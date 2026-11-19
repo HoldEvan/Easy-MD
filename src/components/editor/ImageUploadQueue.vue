@@ -1,20 +1,21 @@
 <template>
   <div v-if="jobs.length || notice" class="image-upload-queue" aria-live="polite" :aria-busy="busy">
     <div v-if="notice" class="image-upload-notice">
-      <span>{{ notice }}</span><button type="button" title="关闭提示" @click="$emit('dismiss')">关闭</button>
+      <span>{{ notice }}</span><button type="button" :title="t('upload.dismissTitle')" @click="$emit('dismiss')">{{ t('upload.close') }}</button>
     </div>
     <div v-for="job in jobs" :key="job.id" class="image-upload-job">
       <Icon :name="job.state === 'busy' || job.state === 'queued' ? 'upload' : 'image'" :size="14" />
-      <div class="image-upload-detail"><strong>{{ job.name }}</strong><span>{{ job.message }}</span><small>目标：{{ job.target.path }}</small></div>
+      <div class="image-upload-detail"><strong>{{ job.name || t('upload.pastedImage') }}</strong><span>{{ job.messageKey ? tf(job.messageKey, job.messageVars || {}) : job.message }}</span><small>{{ tf('upload.target', { path: job.target.path }) }}</small></div>
       <template v-if="job.state === 'failed' || job.state === 'pending'">
-        <button type="button" @click="$emit('retry', job.id)">{{ job.url ? '重试插入' : '重试' }}</button>
-        <button v-if="!job.url" type="button" @click="$emit('local', job.id)">保存到本地</button>
+        <button type="button" @click="$emit('retry', job.id)">{{ t(job.url ? 'upload.retryInsert' : 'upload.retry') }}</button>
+        <button v-if="!job.url" type="button" @click="$emit('local', job.id)">{{ t('upload.saveLocal') }}</button>
       </template>
-      <button type="button" title="取消插入；已发出的上传可能仍会完成" @click="$emit('cancel', job.id)">取消</button>
+      <button type="button" :title="t('upload.cancelTitle')" @click="$emit('cancel', job.id)">{{ t('upload.cancel') }}</button>
     </div>
   </div>
 </template>
 <script setup lang="ts">
+import { t, tf } from "../../i18n";
 import Icon from "../common/Icon.vue";
 import type { ImageInsertionJob } from "../../composables/useImageInsertion";
 defineProps<{ jobs: ImageInsertionJob[]; notice: string; busy: boolean }>();

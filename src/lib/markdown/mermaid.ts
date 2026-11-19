@@ -1,4 +1,5 @@
 import mermaid from "mermaid";
+import { t } from "../../i18n";
 
 let sequence = 0;
 mermaid.initialize({ startOnLoad: false, securityLevel: "strict", suppressErrorRendering: true });
@@ -24,7 +25,7 @@ export async function renderMermaidBlocks(root: ParentNode): Promise<void> {
     } catch {
       pre.dataset.mermaidRendered = "error";
       const error = document.createElement("p");
-      error.textContent = "Mermaid 图表无法渲染，请检查下方源码。";
+      error.textContent = t("md.mermaidError");
       error.style.color = "var(--text-error)";
       pre.before(error);
       document.getElementById(`d${id}`)?.remove();

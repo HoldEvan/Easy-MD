@@ -1,100 +1,100 @@
 <template>
   <div class="upload-pane">
-    <p class="upload-tip">图片上传设置在整个应用中生效，所有知识库共用。保存后，新插入的图片使用所选方式。</p>
-    <p v-if="loading" role="status" class="upload-tip">正在读取设置…</p>
-    <button v-if="!loading && !config" class="emd-btn" @click="load">重新读取</button>
+    <p class="upload-tip">{{ t('upload.scopeTip') }}</p>
+    <p v-if="loading" role="status" class="upload-tip">{{ t('upload.loading') }}</p>
+    <button v-if="!loading && !config" class="emd-btn" @click="load">{{ t('upload.reload') }}</button>
     <form v-if="config" @submit.prevent="save(false)">
       <fieldset :disabled="busy">
         <div class="upload-row">
-          <label for="image-upload-provider">上传方式</label>
+          <label for="image-upload-provider">{{ t('upload.provider') }}</label>
           <select id="image-upload-provider" v-model="config.provider" @change="clearFeedback">
-            <option value="local">本地附件</option>
-            <option value="s3">S3 兼容存储</option>
+            <option value="local">{{ t('upload.local') }}</option>
+            <option value="s3">{{ t('upload.s3') }}</option>
             <option value="picgo">PicGo</option>
           </select>
         </div>
         <p v-if="config.provider === 'local'" class="upload-tip">
-          图片保存在当前知识库的附件目录。附件目录仍在「通用」设置中配置。
+          {{ t('upload.localTip') }}
         </p>
         <template v-else-if="config.provider === 's3'">
           <div class="upload-row">
-            <label for="image-upload-endpoint">API 端点</label>
+            <label for="image-upload-endpoint">{{ t('upload.endpoint') }}</label>
             <input id="image-upload-endpoint" v-model="config.s3.endpoint" type="url" placeholder="https://s3.example.com" @input="clearFeedback" />
           </div>
-          <p class="upload-tip">填写存储服务用于上传的 S3 API 地址，不是图片访问域名。</p>
+          <p class="upload-tip">{{ t('upload.endpointTip') }}</p>
           <div class="upload-row">
-            <label for="image-upload-region">区域</label>
+            <label for="image-upload-region">{{ t('upload.region') }}</label>
             <input id="image-upload-region" v-model="config.s3.region" placeholder="us-east-1" @input="clearFeedback" />
           </div>
           <div class="upload-row">
-            <label for="image-upload-bucket">存储桶</label>
+            <label for="image-upload-bucket">{{ t('upload.bucket') }}</label>
             <input id="image-upload-bucket" v-model="config.s3.bucket" placeholder="images" @input="clearFeedback" />
           </div>
           <div class="upload-row">
-            <label for="image-upload-access-key">Access Key</label>
+            <label for="image-upload-access-key">{{ t('upload.accessKey') }}</label>
             <input id="image-upload-access-key" v-model="config.s3.access_key" autocomplete="off" spellcheck="false" @input="clearFeedback" />
           </div>
           <div class="upload-row">
-            <label for="image-upload-secret">Secret Key</label>
-            <input id="image-upload-secret" v-model="secret" type="password" autocomplete="new-password" :disabled="removeSecret" :placeholder="config.has_secret ? '已保存，留空保留' : '输入 Secret Key'" @input="clearFeedback" />
+            <label for="image-upload-secret">{{ t('upload.secretKey') }}</label>
+            <input id="image-upload-secret" v-model="secret" type="password" autocomplete="new-password" :disabled="removeSecret" :placeholder="t(config.has_secret ? 'upload.secretSaved' : 'upload.secretPlaceholder')" @input="clearFeedback" />
             <button v-if="config.has_secret || removeSecret" type="button" class="emd-btn" @click="toggleRemoveSecret">
-              {{ removeSecret ? '取消移除' : '移除密钥' }}
+              {{ t(removeSecret ? 'upload.cancelRemove' : 'upload.removeSecret') }}
             </button>
           </div>
           <p class="upload-tip" :class="{ 'upload-error': removeSecret }">
-            {{ removeSecret ? '保存时将移除已保存的密钥。' : '留空会保留已保存的密钥；输入新值会替换。密钥不会回显。' }}
+            {{ t(removeSecret ? 'upload.removeSecretTip' : 'upload.secretTip') }}
           </p>
           <div class="upload-row">
-            <label for="image-upload-public-base">公开访问地址</label>
+            <label for="image-upload-public-base">{{ t('upload.publicBase') }}</label>
             <input id="image-upload-public-base" v-model="config.s3.public_base" type="url" placeholder="https://images.example.com" @input="clearFeedback" />
           </div>
-          <p class="upload-tip">图片链接的基础地址，可填写公开桶地址或 CDN 域名；需允许公开读取。它与上传用的 API 端点可以不同。</p>
+          <p class="upload-tip">{{ t('upload.publicBaseTip') }}</p>
           <div class="upload-row">
-            <label for="image-upload-prefix">对象路径前缀</label>
+            <label for="image-upload-prefix">{{ t('upload.prefix') }}</label>
             <input id="image-upload-prefix" v-model="config.s3.prefix" placeholder="images/" @input="clearFeedback" />
           </div>
           <details class="upload-advanced">
-            <summary>高级设置</summary>
+            <summary>{{ t('upload.advanced') }}</summary>
             <label class="upload-checkbox">
               <input v-model="config.s3.path_style" type="checkbox" @change="clearFeedback" />
-              使用路径风格（Path Style）
+              {{ t('upload.pathStyle') }}
             </label>
-            <p class="upload-tip">将桶名放在请求路径中。部分 S3 兼容服务需要开启，请按存储服务说明设置。</p>
+            <p class="upload-tip">{{ t('upload.pathStyleTip') }}</p>
           </details>
         </template>
         <template v-else>
           <div class="upload-row">
-            <label for="image-upload-picgo">PicGo 服务地址</label>
+            <label for="image-upload-picgo">{{ t('upload.picgoUrl') }}</label>
             <input id="image-upload-picgo" v-model="config.picgo.url" type="url" placeholder="http://127.0.0.1:36677/upload" @input="clearFeedback" />
           </div>
-          <p class="upload-tip">先启动外部 PicGo 并开启 HTTP 服务，默认地址为 http://127.0.0.1:36677/upload。</p>
-          <p class="upload-tip">使用 Gitee 时，请在 PicGo 中安装并配置对应图床插件，再将其设为当前图床。EasyMD 通过 PicGo 上传，不内置 Gitee 图床。</p>
+          <p class="upload-tip">{{ t('upload.picgoTip') }}</p>
+          <p class="upload-tip">{{ t('upload.giteeTip') }}</p>
         </template>
-        <p v-if="config.provider !== 'local'" class="upload-tip">云端上传支持 PNG、JPEG、GIF、WebP、BMP、ICO，单张图片不超过 20 MiB。</p>
+        <p v-if="config.provider !== 'local'" class="upload-tip">{{ t('upload.formatsTip') }}</p>
         <div class="upload-actions">
-          <button class="emd-btn" type="submit">{{ operation === 'save' ? '正在保存…' : '保存设置' }}</button>
+          <button class="emd-btn" type="submit">{{ t(operation === 'save' ? 'upload.saving' : 'upload.save') }}</button>
           <button class="emd-btn" type="button" :disabled="config.provider === 'local'" @click="save(true)">
-            {{ operation === 'test' ? '正在测试…' : '保存并测试上传' }}
+            {{ t(operation === 'test' ? 'upload.testing' : 'upload.saveTest') }}
           </button>
         </div>
-        <p v-if="config.provider !== 'local'" class="upload-tip">测试会先保存当前设置，再上传一张测试图片并检查访问和清理结果。</p>
+        <p v-if="config.provider !== 'local'" class="upload-tip">{{ t('upload.testTip') }}</p>
       </fieldset>
     </form>
-    <p v-if="status" role="status" class="upload-status">{{ status }}</p>
-    <p v-if="error" role="alert" class="upload-error">{{ error }}</p>
+    <p v-if="status" role="status" class="upload-status">{{ t(status) }}</p>
+    <p v-if="error" role="alert" class="upload-error">{{ tf(error.key, { error: error.detail }) }}</p>
     <div v-if="testResult" class="upload-result" aria-live="polite">
-      <p>{{ testResult.message }}</p>
+      <p>{{ testMessage }}</p>
       <dl>
-        <div><dt>上传</dt><dd>{{ testResult.upload_ok ? '成功' : '失败' }}</dd></div>
-        <div><dt>公开访问</dt><dd>{{ resultLabel(testResult.accessible, '可访问', '无法访问') }}</dd></div>
-        <div><dt>测试文件清理</dt><dd>{{ resultLabel(testResult.cleanup_ok, '已清理', '未清理，请手动删除测试文件') }}</dd></div>
+        <div><dt>{{ t('upload.upload') }}</dt><dd>{{ t(testResult.upload_ok ? 'upload.success' : 'upload.failed') }}</dd></div>
+        <div><dt>{{ t('upload.publicAccess') }}</dt><dd>{{ resultLabel(testResult.accessible, 'upload.accessible', 'upload.inaccessible') }}</dd></div>
+        <div><dt>{{ t('upload.cleanup') }}</dt><dd>{{ resultLabel(testResult.cleanup_ok, 'upload.cleaned', 'upload.notCleaned') }}</dd></div>
       </dl>
       <template v-if="testUrl">
         <a :href="testUrl" @click.prevent="openTestUrl">{{ testUrl }}</a>
-        <p v-if="testResult.cleanup_ok" class="upload-tip">测试文件已清理，此链接可能已无法访问。</p>
+        <p v-if="testResult.cleanup_ok" class="upload-tip">{{ t('upload.cleanedTip') }}</p>
         <template v-else>
-          <img v-if="!previewFailed" :src="testUrl" alt="上传测试图片" referrerpolicy="no-referrer" @error="previewFailed = true" />
-          <p v-else class="upload-tip">预览未能加载，可通过上方链接检查图片。</p>
+          <img v-if="!previewFailed" :src="testUrl" :alt="t('upload.testImageAlt')" referrerpolicy="no-referrer" @error="previewFailed = true" />
+          <p v-else class="upload-tip">{{ t('upload.previewFailed') }}</p>
         </template>
       </template>
     </div>
@@ -103,6 +103,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { t, tf } from "../../i18n";
 import { api } from "../../ipc/tauri";
 import {
   getImageUploadConfig,
@@ -119,9 +120,22 @@ const busy = computed(() => loading.value || operation.value !== null);
 const secret = ref("");
 const removeSecret = ref(false);
 const status = ref("");
-const error = ref("");
+const error = ref<{ key: string; detail: string } | null>(null);
 const testResult = ref<ImageUploadTestResult | null>(null);
 const previewFailed = ref(false);
+// Translate only known fixed backend messages; preserve unexpected diagnostic details.
+const testMessage = computed(() => {
+  const result = testResult.value;
+  if (!result) return "";
+  const fixedMessages: Record<string, string> = {
+    "无法生成测试图片": "upload.testGeneratedFailed",
+    "测试图片已上传并删除；URL 仅供检查，已不再保留": "upload.testCleaned",
+    "测试图片上传成功，但删除失败；请在图床手动删除该 URL 对应对象": "upload.testCleanupFailed",
+    "测试图片上传成功；PicGo 不提供通用删除接口，请在图床手动删除该 URL 对应图片": "upload.testManualCleanup",
+  };
+  const key = fixedMessages[result.message];
+  return key ? t(key) : result.message;
+});
 const testUrl = computed(() => {
   const value = testResult.value?.url;
   if (!value) return null;
@@ -135,18 +149,18 @@ const testUrl = computed(() => {
 
 function clearFeedback() {
   status.value = "";
-  error.value = "";
+  error.value = null;
   testResult.value = null;
   previewFailed.value = false;
 }
 
 async function openTestUrl() {
   if (!testUrl.value) return;
-  error.value = "";
+  error.value = null;
   try {
     await api.openExternalUrl(testUrl.value);
   } catch (e) {
-    error.value = `打开测试图片链接失败：${String(e)}`;
+    error.value = { key: "upload.openTestFailed", detail: String(e) };
   }
 }
 
@@ -157,7 +171,7 @@ function toggleRemoveSecret() {
 }
 
 function resultLabel(value: boolean | null, yes: string, no: string): string {
-  return value === null ? "未检查或不支持" : value ? yes : no;
+  return t(value === null ? "upload.notChecked" : value ? yes : no);
 }
 
 async function load() {
@@ -166,7 +180,7 @@ async function load() {
   try {
     config.value = await getImageUploadConfig();
   } catch (e) {
-    error.value = `读取图片上传设置失败：${String(e)}`;
+    error.value = { key: "upload.loadFailed", detail: String(e) };
   } finally {
     loading.value = false;
   }
@@ -185,14 +199,14 @@ async function save(test: boolean) {
     secret.value = "";
     removeSecret.value = false;
     saved = true;
-    status.value = test ? "设置已保存，正在测试上传…" : "图片上传设置已保存，对所有知识库生效。";
+    status.value = test ? "upload.savedTesting" : "upload.saved";
     if (test) {
       testResult.value = await testImageUpload();
-      status.value = "设置已保存，测试完成。";
+      status.value = "upload.testComplete";
     }
   } catch (e) {
     status.value = "";
-    error.value = `${saved ? '设置已保存，但测试失败' : '保存图片上传设置失败'}：${String(e)}`;
+    error.value = { key: saved ? "upload.testFailed" : "upload.saveFailed", detail: String(e) };
   } finally {
     operation.value = null;
   }

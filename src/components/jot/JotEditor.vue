@@ -5,7 +5,7 @@
       <span class="jot-title">{{ title }}</span>
       <span v-if="editor.isDirty" class="jot-dirty" />
       <div class="jot-spacer" />
-      <button class="jot-btn" @click="images.choose"><Icon name="image" :size="12" />插入图片</button>
+      <button class="jot-btn" @click="images.choose"><Icon name="image" :size="12" />{{ t('ed.fImage') }}</button>
       <button class="jot-btn" :title="t('ed.tag')" @pointerdown.stop @click="tagOpen = !tagOpen">
         <Icon name="tag" :size="12" />
         {{ t("ed.tagTxt") }}

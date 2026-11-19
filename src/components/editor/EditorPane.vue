@@ -400,7 +400,7 @@ const menuItems = computed<DropItem[]>(() => [
   { key: "md", label: t("ed.expMd"), icon: "download", hint: t("ed.keepWiki") },
   { key: "html", label: t("ed.expHtml"), icon: "download", hint: t("ed.singleFile") },
   { key: "pdf", label: t("ed.expPdf"), icon: "download", hint: t("ed.printHint") },
-  { key: "share", label: "分享", icon: "share-2", hint: keyHint(isMac ? "Ctrl+Shift+F5" : "Ctrl+F5") },
+  { key: "share", label: t("share.menu"), icon: "share-2", hint: keyHint(isMac ? "Ctrl+Shift+F5" : "Ctrl+F5") },
   { key: "sep-view", label: "", separator: true },
   { key: "graph", label: t("ed.openGraph"), icon: "share-2", hint: keyHint("Ctrl+G") },
   { key: "search", label: t("ed.searchAll"), icon: "search", hint: keyHint("Ctrl+Shift+F") },

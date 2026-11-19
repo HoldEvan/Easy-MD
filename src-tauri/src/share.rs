@@ -681,6 +681,16 @@ fn handle_request(
         );
         return;
     }
+    if route == "/login.js" && request.method() == &Method::Get {
+        respond(
+            request,
+            200,
+            "text/javascript; charset=utf-8",
+            include_bytes!("../../src/share/login.js").to_vec(),
+            false,
+        );
+        return;
+    }
     if route == "/login" && request.method() == &Method::Post {
         use std::io::Read;
         let mut body = String::new();
@@ -1036,6 +1046,16 @@ mod tests {
         assert!(page.contains("name=\"password\""));
         assert!(!page.contains("name=\"username\""));
         assert!(!page.to_lowercase().contains("www-authenticate"));
+        assert!(page.contains("<script src=\"/login.js\"></script>"));
+        let login_script = request(port, "GET", "/login.js", None);
+        assert!(login_script.starts_with("HTTP/1.1 200"));
+        assert!(login_script.contains("text/javascript; charset=utf-8"));
+        assert!(login_script.contains("script-src 'self'"));
+        assert!(login_script.contains("share-language"));
+        assert!(!login_script.contains("name=\"password\""));
+        assert!(request(port, "POST", "/login.js", None).starts_with("HTTP/1.1 401"));
+        assert!(request(port, "GET", "/share.js", None).starts_with("HTTP/1.1 401"));
+        assert!(request(port, "GET", "/api/catalog", None).starts_with("HTTP/1.1 401"));
         let bad = "password=wrong";
         let failed = exchange(port, &format!("POST /login HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}", bad.len(), bad));
         assert!(failed.starts_with("HTTP/1.1 401"));

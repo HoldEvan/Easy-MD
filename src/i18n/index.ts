@@ -1,11 +1,17 @@
 // 轻量双语 i18n：单文件字典 key: [中文, English]，零依赖，切换立即生效
 import { ref } from "vue";
 import { platformText } from "../lib/platform";
+import { shareMessages } from "./share";
+import { imageUploadMessages } from "./imageUpload";
+import { graphMessages } from "./graph";
 
 export type Lang = "zh" | "en";
 
 /** 每个键: [中文, 美式英语] */
 const dict: Record<string, [string, string]> = {
+  ...shareMessages,
+  ...imageUploadMessages,
+  ...graphMessages,
   // ---- 通用 ----
   "c.cancel": ["取消", "Cancel"],
   "c.confirm": ["确定", "OK"],
@@ -29,6 +35,7 @@ const dict: Record<string, [string, string]> = {
   "jot.timeline": ["时间线", "Timeline"],
   "jot.empty": ["还没有小计\n点 Ribbon 的“小计”按钮开始记录", "No jots yet\nClick the Jot button to start"],
   "jot.newJot": ["新建小计", "New jot"],
+  "jot.open": ["打开小计", "Open jot"],
   "jot.placeholder": ["记录想法…（可直接粘贴图片）", "Jot down ideas… (images paste supported)"],
   "jot.batchDelConfirm": ["删除 {n} 条小计？", "Delete {n} jots?"],
   "tag.matchNotes": ["使用了 #{} 标签的笔记", "Notes tagged #{}"],
