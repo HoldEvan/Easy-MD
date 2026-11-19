@@ -281,10 +281,16 @@ impl ShareState {
                 }
                 // Close every relay before joining responses: this interrupts tiny_http
                 // socket writes and incomplete request-body reads, not just file reads.
+                #[cfg(test)]
+                let debug_started = std::time::Instant::now();
                 drop(connections);
+                #[cfg(test)]
+                eprintln!("[DEBUG-stop-intel] connections closed {:?}", debug_started.elapsed());
                 for response in responses {
                     let _ = response.join();
                 }
+                #[cfg(test)]
+                eprintln!("[DEBUG-stop-intel] responses joined {:?}", debug_started.elapsed());
                 // The externally visible listener is owned here, so join releases its port.
             })
             .map_err(|e| format!("无法启动分享线程：{e}"))?;
@@ -1152,7 +1158,9 @@ mod tests {
         client.read_exact(&mut first_byte).unwrap();
         let started = std::time::Instant::now();
         service.stop().unwrap();
-        assert!(started.elapsed() < Duration::from_secs(1));
+        let elapsed = started.elapsed();
+        eprintln!("[DEBUG-stop-intel] stop returned {elapsed:?}");
+        assert!(elapsed < Duration::from_secs(1), "stop took {elapsed:?}");
         service
             .start(f.0.clone(), port, String::new(), Ipv4Addr::LOCALHOST)
             .unwrap();
