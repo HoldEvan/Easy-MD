@@ -12,6 +12,7 @@
       <span v-else-if="editor.isDirty" class="sb-item">{{ t("sb.unsaved") }}</span>
     </div>
     <div class="sb-right">
+      <template v-if="ui.view !== 'image'">
       <span v-if="backlinkCount > 0" class="sb-item">
         <Icon name="link" :size="12" /> {{ tf("sb.backlinks", { n: backlinkCount }) }}
       </span>
@@ -34,6 +35,7 @@
         @close="encOpen = false"
       />
       <span class="sb-item">{{ modeLabel }}</span>
+      </template>
       <span class="sb-item sb-ver" :title="`EasyMD v${appVersion} ${BUILD_ID}`">
         v{{ appVersion }} · {{ BUILD_ID }}
       </span>
@@ -46,6 +48,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { getVersion } from "@tauri-apps/api/app";
 import Icon from "./Icon.vue";
 import DropdownMenu, { type DropItem } from "./DropdownMenu.vue";
+import { useUiStore } from "../../stores/ui";
 import { useEditorStore } from "../../stores/editor";
 import { useNotesIndexStore } from "../../stores/notesIndex";
 import { useSyncStore } from "../../stores/sync";
@@ -53,6 +56,7 @@ import { api } from "../../ipc/tauri";
 import { BUILD_ID, APP_VERSION } from "../../build";
 import { t, tf } from "../../i18n";
 
+const ui = useUiStore();
 const editor = useEditorStore();
 const indexStore = useNotesIndexStore();
 const sync = useSyncStore();

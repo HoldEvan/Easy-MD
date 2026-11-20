@@ -178,6 +178,6 @@ export interface GraphDoc {
 }
 
 export type EditMode = "source" | "preview" | "split";
-export type MainView = "editor" | "graph" | "canvas" | "calendar" | "jot";
+export type MainView = "editor" | "graph" | "canvas" | "calendar" | "jot" | "image";
 export type LeftTab = "notes" | "jots" | "tags";
 export type RightTab = "outline" | "backlinks" | "props";

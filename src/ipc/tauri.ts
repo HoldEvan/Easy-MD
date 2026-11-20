@@ -112,6 +112,7 @@ export const api = {
   // ---- 导入 ----
   importFiles: (paths: string[], folder: string | null) =>
     invoke<string[]>("import_files", { paths, folder }),
+  fileMetadata: (path: string) => invoke<{ size: number; modified: number | null }>("file_metadata", { path }),
   readExternalBinary: (path: string) => invoke<number[]>("read_external_binary", { path }),
   listAllFilesWithMtime: () =>
     invoke<{ path: string; mtime: number; kind: string }[]>(

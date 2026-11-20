@@ -249,6 +249,9 @@ async function confirmRename(name: string) {
   const newPath = await api.renamePath(entry.path, name);
   // 修正编辑器与树
   if (editor.activePath === entry.path) editor.renameSelf(newPath);
+  if (ui.imagePath === entry.path || ui.imagePath.startsWith(entry.path + "/")) {
+    ui.imagePath = newPath + ui.imagePath.slice(entry.path.length);
+  }
   await vault.refreshParents(newPath);
   await indexStore.rebuild();
 }
@@ -258,6 +261,10 @@ async function deleteEntry(e: FsEntry | null) {
   if (!confirm(`${tf("fe.confirmDel", { name: e.name })}`)) return;
   await api.deletePath(e.path);
   if (editor.activePath === e.path) editor.reset();
+  if (ui.imagePath === e.path || ui.imagePath.startsWith(e.path + "/")) {
+    ui.imagePath = "";
+    ui.view = "editor";
+  }
   await vault.refreshParents(e.path);
   await indexStore.rebuild();
 }

@@ -98,10 +98,10 @@ function iconFor(e: FsEntry): string {
 }
 
 function isActive(e: FsEntry): boolean {
-  return e.path === editor.activePath && ui.view === "editor";
+  return (e.path === editor.activePath && ui.view === "editor") || (e.path === ui.imagePath && ui.view === "image");
 }
 
-function openEntry(e: FsEntry, ev?: MouseEvent) {
+async function openEntry(e: FsEntry, ev?: MouseEvent) {
   // Ctrl+点击 = 多选/取消多选
   if (ev?.ctrlKey || ev?.metaKey) {
     const s = new Set(multiSelected.value);
@@ -129,7 +129,9 @@ function openEntry(e: FsEntry, ev?: MouseEvent) {
     ui.graphPath = e.path;
     ui.view = "graph";
   } else if (e.kind === "image") {
-    emit("open", e.path);
+    if (editor.isDirty) await editor.save();
+    ui.imagePath = e.path;
+    ui.view = "image";
   }
 }
 

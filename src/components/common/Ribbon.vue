@@ -44,7 +44,7 @@ interface RibbonBtn {
 const fullView = computed(() => ui.view === "graph" || ui.view === "calendar");
 
 function showLeft(tab: "notes" | "jots" | "tags") {
-  if (fullView.value) ui.view = "editor";
+  if (fullView.value || ui.view === "image") ui.view = "editor";
   ui.leftVisible = true;
   ui.leftTab = tab;
 }

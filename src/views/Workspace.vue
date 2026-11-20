@@ -21,6 +21,7 @@
         <transition name="emd-view" mode="out-in">
           <div :key="ui.view" class="ws-main-inner">
             <EditorPane v-if="ui.view === 'editor'" />
+            <ImageView v-else-if="ui.view === 'image'" :key="ui.imagePath" :path="ui.imagePath" />
             <GraphView v-else-if="ui.view === 'graph'" />
             <CanvasEditor v-else-if="ui.view === 'canvas'" />
             <CalendarView v-else-if="ui.view === 'calendar'" />
@@ -30,7 +31,7 @@
 
         <!-- 右侧栏收起后的展开手柄 -->
         <button
-          v-if="!ui.rightVisible"
+          v-if="ui.view !== 'image' && !ui.rightVisible"
           class="ws-right-expand"
           :title="t('ws.expand')"
           @click="ui.rightVisible = true"
@@ -88,6 +89,7 @@ import AiDialog from "../components/ai/AiDialog.vue";
 import FileExplorer from "../components/sidebar/FileExplorer.vue";
 import TagPanel from "../components/sidebar/TagPanel.vue";
 import EditorPane from "../components/editor/EditorPane.vue";
+import ImageView from "../components/editor/ImageView.vue";
 import OutlinePanel from "../components/panels/OutlinePanel.vue";
 import BacklinksPanel from "../components/panels/BacklinksPanel.vue";
 import PropertiesPanel from "../components/panels/PropertiesPanel.vue";

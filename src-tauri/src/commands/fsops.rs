@@ -596,6 +596,71 @@ pub fn write_external(path: String, content: String) -> Result<(), String> {
     std::fs::write(full, content).map_err(|e| format!("写入失败：{}", e))
 }
 
+/// 只返回知识库内文件的元信息，不读取文件内容。
+#[derive(serde::Serialize)]
+pub struct FileMetadata {
+    pub size: u64,
+    pub modified: Option<u64>,
+}
+
+#[tauri::command]
+pub fn file_metadata(state: State<'_, AppState>, path: String) -> Result<FileMetadata, String> {
+    with_vault(&state, |vc| {
+        let joined = vc.safe_join(&path).map_err(|e| e.to_string())?;
+        let full = match joined.canonicalize() {
+            Ok(canonical) => {
+                let root = vc.root.canonicalize().map_err(|e| e.to_string())?;
+                if !canonical.starts_with(&root) {
+                    return Err("路径超出知识库范围".into());
+                }
+                canonical
+            }
+            Err(primary_error) => {
+                let Some(asset_root) = vc.asset_root.as_deref() else {
+                    return Err(format!("读取文件信息失败：{}", primary_error));
+                };
+                let extension = joined
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
+                if ![
+                    "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif",
+                ]
+                .contains(&extension.as_str())
+                {
+                    return Err("文件不在知识库中".into());
+                }
+                let root = asset_root.canonicalize().map_err(|e| e.to_string())?;
+                let candidate = joined
+                    .strip_prefix(&vc.root)
+                    .map(|relative| asset_root.join(relative))
+                    .unwrap_or_else(|_| asset_root.join(&path));
+                let canonical = candidate
+                    .canonicalize()
+                    .map_err(|e| format!("读取文件信息失败：{}", e))?;
+                if !canonical.starts_with(root) {
+                    return Err("路径超出资源目录范围".into());
+                }
+                canonical
+            }
+        };
+        let metadata = std::fs::metadata(&full).map_err(|e| format!("读取文件信息失败：{}", e))?;
+        if !metadata.is_file() {
+            return Err("目标不是文件".into());
+        }
+        let modified = metadata
+            .modified()
+            .ok()
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| duration.as_secs());
+        Ok(FileMetadata {
+            size: metadata.len(),
+            modified,
+        })
+    })
+}
+
 /// 读取 vault 外文件的字节（图片导入画布等场景，路径来自系统文件对话框）
 #[tauri::command]
 pub fn read_external_binary(path: String) -> Result<Vec<u8>, String> {

@@ -640,18 +640,26 @@ fn send_response<R: std::io::Read>(
     response: Response<R>,
     original: bool,
 ) {
-    let mut response = response.with_status_code(StatusCode(status))
+    let mut response = response
+        .with_status_code(StatusCode(status))
         .with_header(header("Content-Type", mime))
         .with_header(header("X-Content-Type-Options", "nosniff"))
         .with_header(header("Cache-Control", "no-store"))
         .with_header(header("Referrer-Policy", "no-referrer"))
         .with_header(header("X-Frame-Options", "DENY"))
-        .with_header(header("Content-Security-Policy", if original {
-            "sandbox; default-src 'none'; frame-ancestors 'none'"
-        } else {
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
-        }));
-    if original {
+        .with_header(header(
+            "Content-Security-Policy",
+            if original {
+                "sandbox; default-src 'none'; frame-ancestors 'none'"
+            } else {
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+            },
+        ));
+    let explicit_download = request
+        .url()
+        .split_once('?')
+        .is_some_and(|(_, query)| query.split('&').any(|part| part == "download=1"));
+    if original && (!mime.starts_with("image/") || explicit_download) {
         response.add_header(header("Content-Disposition", "attachment"));
     }
     if status == 405 {
@@ -1147,6 +1155,35 @@ mod tests {
         service.stop().unwrap();
         let rebound = TcpListener::bind((Ipv4Addr::LOCALHOST, port));
         assert!(rebound.is_ok());
+    }
+
+    #[test]
+    fn shared_images_are_inline_and_explicit_downloads_are_attachments() {
+        let f = Fixture::new();
+        let service = ShareState::default();
+        let port = free_port();
+        service
+            .start(f.0.clone(), port, String::new(), Ipv4Addr::LOCALHOST)
+            .unwrap();
+        let image = request(port, "GET", "/files/image.png", None);
+        assert!(image.starts_with("HTTP/1.1 200"));
+        assert!(image.to_lowercase().contains("content-type: image/png"));
+        assert!(
+            !image
+                .to_lowercase()
+                .contains("content-disposition: attachment"),
+            "Images must display inline: {image}"
+        );
+        assert!(image.contains("sandbox; default-src 'none'"));
+        let download = request(port, "GET", "/files/image.png?download=1", None);
+        assert!(download
+            .to_lowercase()
+            .contains("content-disposition: attachment"));
+        let html = request(port, "GET", "/files/unsafe.html", None);
+        assert!(html
+            .to_lowercase()
+            .contains("content-disposition: attachment"));
+        service.stop().unwrap();
     }
 
     #[test]

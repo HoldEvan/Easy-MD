@@ -2,6 +2,7 @@ import MarkdownIt from 'markdown-it';
 import { renderMermaidBlocks } from '../lib/markdown/mermaid';
 import { taskListPlugin } from '../lib/markdown/taskList';
 import { centerContainers } from './center';
+import { detailsContainers } from './details';
 import { htmlImages } from './images';
 import { keyboardLabels } from './kbd';
 import { wikiLinks } from './wikiLinks';
@@ -21,6 +22,7 @@ const app = { catalog: null as Catalog | null, selected: '', query: '', expanded
 const md = new MarkdownIt({ html: false, linkify: true, breaks: false, typographer: false });
 md.validateLink = (url: string) => safeHref(url) !== null;
 md.use(centerContainers);
+md.use(detailsContainers);
 md.use(htmlImages);
 md.use(keyboardLabels);
 md.use(wikiLinks);
@@ -66,7 +68,10 @@ function resourceUrl(src: string, currentPath: string): string | null {
   if (/^(data:|blob:|https?:)/i.test(src)) return src;
   if (/^(javascript:|file:|\/\/)/i.test(src)) return null;
   const clean = src.split(/[?#]/)[0];
-  const path = clean.startsWith('/') ? clean.slice(1) : resolveVaultPath(clean, currentPath);
+  const relative = resolveVaultPath(clean, currentPath);
+  const rooted = resolveVaultPath(`/${clean.replace(/^\//, '')}`);
+  const exists = (path: string) => app.catalog?.entries.some(entry => entry.path === path && entry.kind === 'image');
+  const path = clean.startsWith('/') ? rooted : exists(relative) ? relative : exists(rooted) ? rooted : relative;
   return path ? fileUrl(path) : null;
 }
 function findEntry(path: string): Entry | undefined {
@@ -170,7 +175,7 @@ async function copyText(text: string): Promise<boolean> {
 async function renderFile(entry: Entry): Promise<void> {
   const host = $('#content'); host.replaceChildren(); host.scrollTop = 0;
   const head = el('header', 'file-head'); const title = el('h1', 'file-title', entry.path.split('/').pop() || entry.path); const actions = el('div', 'file-actions');
-  const download = ui('a', 'download', 'download'); download.href = fileUrl(entry.path); download.download = entry.path.split('/').pop() || 'download';
+  const download = ui('a', 'download', 'download'); download.href = fileUrl(entry.path) + (app.static ? '' : '?download=1'); download.download = entry.path.split('/').pop() || 'download';
   const crumbsRow = el('div', 'breadcrumbs-row');
   const crumbs = el('div', 'breadcrumbs', entry.path);
   if (entry.modified != null) {

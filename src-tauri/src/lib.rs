@@ -101,6 +101,7 @@ pub fn run() {
             commands::os_open::open_external_url,
             commands::fsops::import_files,
             commands::fsops::read_external_binary,
+            commands::fsops::file_metadata,
             commands::extimg::fetch_external_image,
             commands::fsops::list_all_files_with_mtime,
             commands::fsops::reveal_in_file_manager,

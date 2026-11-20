@@ -1,4 +1,10 @@
 export const shareMessages: Record<string, [string, string]> = {
+  'image.title': ['图片预览', 'Image preview'],
+  'image.loading': ['正在加载图片…', 'Loading image…'],
+  'image.failed': ['图片加载失败', 'Failed to load image'],
+  'image.retry': ['重新加载', 'Retry'],
+  'image.dimensions': ['尺寸', 'Dimensions'],
+  'image.fileSize': ['文件大小', 'File size'],
   'share.menu': ['分享', 'Share'],
   'share.title': ['分享知识库', 'Share vault'],
   'share.help': ['分享已保存的笔记和附件（不含画布），退出 EasyMD 后停止服务。', 'Share saved notes and attachments (excluding canvases). Sharing stops when EasyMD exits.'],

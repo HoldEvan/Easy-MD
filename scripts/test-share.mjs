@@ -32,7 +32,18 @@ const kbdSource = await readFile(new URL('../src/share/kbd.ts', import.meta.url)
 const kbdCode = await transform(kbdSource, { loader: 'ts', format: 'esm' });
 const { keyboardLabels } = await import(`data:text/javascript;base64,${Buffer.from(kbdCode.code).toString('base64')}`);
 const { wikiLinks, resolveWikiNote } = await importShareModule('wikiLinks');
-const md = new MarkdownIt({ html: false }).use(centerContainers).use(codeBlockControls).use(htmlImages).use(keyboardLabels).use(wikiLinks);
+const { detailsContainers } = await importShareModule('details');
+const md = new MarkdownIt({ html: false }).use(centerContainers).use(detailsContainers).use(codeBlockControls).use(htmlImages).use(keyboardLabels).use(wikiLinks);
+assert.match(md.render('<details><summary>16 previous messages</summary>\n\nHidden text\n\n</details>'), /<details>\s*<summary>16 previous messages<\/summary>/);
+assert.match(md.render('<details open><summary>**Messages**</summary>body</details>'), /<details open="">\s*<summary><strong>Messages<\/strong><\/summary>/);
+assert.match(md.render('<details>\n<summary>Messages</summary>\n\n**Bold**\n\n- Item\n\n</details>'), /<strong>Bold<\/strong>[\s\S]*<li>Item<\/li>/);
+const nestedDetails = md.render('<details><summary>Outer</summary>\n<details><summary>Inner</summary>\ncontent\n</details>\n</details>');
+assert.equal((nestedDetails.match(/<details>/g) || []).length, 2);
+assert.match(md.render('<details><summary>Code</summary>\n```html\n</details>\n```\n</details>'), /&lt;\/details&gt;/);
+for (const literal of ['`<details><summary>x</summary></details>`', '```html\n<details><summary>x</summary></details>\n```', '    <details><summary>x</summary></details>', '<!-- <details><summary>x</summary></details> -->', '<details onclick="alert(1)"><summary>x</summary></details>', '<details><summary onclick="alert(1)">x</summary></details>', '<details><summary>x</summary>unclosed']) {
+  assert.doesNotMatch(md.render(literal), /<details(?:\s|>)/);
+}
+assert.doesNotMatch(md.render('<details><summary><script>alert(1)</script></summary>\n<script>alert(1)</script>\n</details>'), /<script>/);
 const wikiEnv = { notePaths: ['目录/笔记.md', 'Other.md'] };
 assert.equal(resolveWikiNote('笔记', wikiEnv.notePaths), '目录/笔记.md');
 assert.equal(resolveWikiNote('目录/笔记.md', wikiEnv.notePaths), '目录/笔记.md');
@@ -84,11 +95,15 @@ assert.doesNotMatch(md.render('<script>alert(1)</script><iframe src=x></iframe>'
 const mainSource = await readFile(new URL('../src/share/main.ts', import.meta.url), 'utf8');
 const rendererSource = mainSource.slice(mainSource.indexOf('md.renderer.rules.image ='), mainSource.indexOf('md.renderer.rules.link_open ='));
 const resourceSource = mainSource.slice(mainSource.indexOf('function resourceUrl('), mainSource.indexOf('function findEntry('));
-const integrationCode = await transform(`export function install(md, safeHref, resolveVaultPath, encodedPath, fileUrl) { md.validateLink = (url) => safeHref(url) !== null; ${resourceSource}\n${rendererSource}\n}`, { loader: 'ts', format: 'esm' });
+const integrationCode = await transform(`export function install(md, safeHref, resolveVaultPath, encodedPath, fileUrl, app) { md.validateLink = (url) => safeHref(url) !== null; ${resourceSource}\n${rendererSource}\n}`, { loader: 'ts', format: 'esm' });
 const { install } = await import(`data:text/javascript;base64,${Buffer.from(integrationCode.code).toString('base64')}`);
 const shareFileUrl = (path) => `/files/${encodedPath(path)}`;
 const shareMd = new MarkdownIt({ html: false }).use(centerContainers).use(htmlImages);
-install(shareMd, safeHref, resolveVaultPath, encodedPath, shareFileUrl);
+const imageCatalog = { catalog: { entries: [{ path: 'assets/paste.png', kind: 'image' }, { path: 'notes/assets/local.png', kind: 'image' }, { path: 'assets/local.png', kind: 'image' }] } };
+install(shareMd, safeHref, resolveVaultPath, encodedPath, shareFileUrl, imageCatalog);
+assert.match(shareMd.render('![](assets/paste.png)', { path: 'notes/doc.md' }), /src="\/files\/assets\/paste.png"/);
+assert.match(shareMd.render('![](assets/local.png)', { path: 'notes/doc.md' }), /src="\/files\/notes\/assets\/local.png"/);
+assert.match(shareMd.render('![](/assets/a%20b.png)', { path: 'notes/doc.md' }), /src="\/files\/assets\/a%20b.png"/);
 const env = { path: 'notes/doc.md' };
 assert.equal(shareMd.render('<img src="../assets/a b.png" alt="截图">', env).match(/src="([^"]+)"/)[1], shareMd.render('![截图](<../assets/a b.png>)', env).match(/src="([^"]+)"/)[1]);
 assert.match(shareMd.render(imageMarkdown, env), /src="\/files\/assets\/p.png" alt="截图" width="320" loading="lazy"/);

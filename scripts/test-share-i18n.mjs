@@ -47,6 +47,19 @@ const harness = `<!doctype html><html><body><pre id="result">RUNNING</pre><ifram
   await load(frame, '/?static#Folder%2FNote.md');
   const doc = frame.contentDocument;
   await wait(() => doc.querySelector('.code-copy'));
+  await wait(() => doc.querySelectorAll('.file-body img').length === 3);
+  await wait(() => [...doc.querySelectorAll('.file-body img')].every(img => img.complete));
+  const imageStates = [...doc.querySelectorAll('.file-body img')].map(img => ({ src: img.getAttribute('src'), complete: img.complete, width: img.naturalWidth }));
+  assert(imageStates.every(img => img.complete && img.width === 24), JSON.stringify(imageStates));
+  assert(imageStates.every(img => new URL(img.src, frame.contentWindow.location.href).pathname === '/files/assets/Pasted%20image.png'), 'Pasted and relative paths resolve to the existing image');
+  const disclosure = doc.querySelector('.file-body details');
+  assert(disclosure && !disclosure.open, 'Details starts collapsed');
+  assert(disclosure.querySelector('summary').textContent === '16 previous messages', 'Summary rendered');
+  const collapsedHeight = disclosure.getBoundingClientRect().height;
+  disclosure.querySelector('summary').click();
+  assert(disclosure.open && disclosure.getBoundingClientRect().height > collapsedHeight, 'Click reveals Markdown content');
+  disclosure.querySelector('summary').click();
+  assert(!disclosure.open, 'Click collapses content');
   assert(doc.documentElement.lang === 'en', 'Saved English preference');
   assert(doc.title === 'Shared vault', 'English title');
   assert(doc.querySelector('.download').textContent === 'Download', 'English download');
@@ -113,8 +126,9 @@ const server = createServer((request, response) => {
   else if (pathname === '/share.js') { body = bundle.outputFiles[0].contents; type = 'text/javascript'; }
   else if (pathname === '/share.css') { body = css; type = 'text/css'; }
   else if (pathname === '/catalog.json') {
-    body = JSON.stringify({ name: '用户知识库', stats: { files: 1, folders: 1, notes: 1, bytes: 100 }, entries: [{ path: 'Folder', kind: 'folder' }, { path: 'Folder/Note.md', kind: 'markdown', modified: 1700000000 }] }); type = 'application/json';
-  } else if (pathname === '/files/Folder/Note.md') { noteRequests++; body = '# 用户内容 User content\n\n[[missing]]\n\n```js\nconst value = 1;\n```'; type = 'text/plain'; }
+    body = JSON.stringify({ name: '用户知识库', stats: { files: 1, folders: 1, notes: 1, bytes: 100 }, entries: [{ path: 'Folder', kind: 'folder' }, { path: 'Folder/Note.md', kind: 'markdown', modified: 1700000000 }, { path: 'assets/Pasted image.png', kind: 'image' }] }); type = 'application/json';
+  } else if (pathname === '/files/assets/Pasted%20image.png') { body = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="16"><rect width="24" height="16" fill="purple"/></svg>'; type = 'image/svg+xml'; }
+  else if (pathname === '/files/Folder/Note.md') { noteRequests++; body = '# 用户内容 User content\n\n![](<assets/Pasted image.png>)\n\n![](../assets/Pasted%20image.png)\n\n<img src="/assets/Pasted%20image.png">\n\n<details><summary>16 previous messages</summary>\n\n**Hidden messages**\n\n</details>\n\n[[missing]]\n\n```js\nconst value = 1;\n```'; type = 'text/plain'; }
   else { response.writeHead(404); response.end(); return; }
   // The login frame needs to be inspected by this same-origin harness; retain the exact production script policy.
   const headers = { 'Content-Type': type };
